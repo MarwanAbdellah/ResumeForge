@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent: #5ed29c;
+  --color-accent-glow: rgba(94, 210, 156, 0.15);
+  --color-dark-bg: #070b0a;
+  --color-dark-surface: #0a0f0d;
+  --color-glass-border: rgba(255, 255, 255, 0.1);
+  --font-inter: "Inter", sans-serif;
+  --font-jakarta: "Plus Jakarta Sans", sans-serif;
+  --font-instrument: "Instrument Serif", serif;
+}
+
+/* Base styles */
+html {
+  scroll-behavior: smooth;
+  background-color: #070b0a;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Inter", sans-serif;
+  background-color: #070b0a;
+  color: #ffffff;
+  overflow-x: hidden;
+}
+
+/* Glass card border effect — uses mask-composite which Tailwind cannot express */
+.glass-card-border {
+  position: relative;
+}
+
+.glass-card-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.4px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.05) 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Video opacity layer */
+.video-opacity-wrapper {
+  opacity: 0.6;
+}
