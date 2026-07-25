@@ -1,5 +1,6 @@
 import Navigation from "./components/Navigation";
 import HeroSection from "./components/HeroSection";
+import FeatureSlider from "./components/FeatureSlider";
 import InputSection from "./components/InputSection";
 
 export default function App() {
@@ -7,6 +8,7 @@ export default function App() {
     <div className="min-h-screen bg-dark-bg">
       <Navigation />
       <HeroSection />
+      <FeatureSlider />
       <InputSection />
 
       {/* Footer */}

@@ -49,3 +49,9 @@ body {
 .video-opacity-wrapper {
   opacity: 0.6;
 }
+
+/* Scroll-triggered slide-up animation */
+.animate-slide-up {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+}

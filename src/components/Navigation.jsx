@@ -1,12 +1,7 @@
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
 
-const NAV_LINKS = [
-  { label: "Resume Builder", href: "#builder" },
-  { label: "Cover Letters", href: "#cover-letters" },
-  { label: "Templates", href: "#templates" },
-  { label: "About", href: "#about" },
-];
+const NAV_LINKS = [];
 
 export default function Navigation() {
   const [mobileOpen, setMobileOpen] = useState(false);

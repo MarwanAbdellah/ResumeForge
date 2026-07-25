@@ -1,0 +1,108 @@
+\documentclass[11pt,a4paper]{article}
+
+% ── Packages ──────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=0.6in,top=0.5in,bottom=0.5in]{geometry}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+% ── ATS-friendly: no colors, no columns, no graphics ─────
+\hypersetup{hidelinks}
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+
+% ── Section formatting: uppercase + rule ──────────────────
+\titleformat{\section}{\large\bfseries\uppercase}{}{0em}{}[\vspace{-6pt}\rule{\textwidth}{0.4pt}]
+\titlespacing*{\section}{0pt}{10pt}{6pt}
+
+% ── Custom commands ───────────────────────────────────────
+% Experience entry: \expentry{Title}{Date}{Company}{Location}{bullets}
+\newcommand{\expentry}[5]{
+  \noindent\textbf{#1}\hfill\textit{#2}\\
+  \textit{#3}{\small\ #4}\\[2pt]
+  \begin{itemize}[nosep,leftmargin=1.5em,topsep=0pt,partopsep=0pt]
+    #5
+  \end{itemize}
+  \vspace{4pt}
+}
+
+% Education entry: \eduentry{School}{Date}{Degree}{details}
+\newcommand{\eduentry}[4]{
+  \noindent\textbf{#1}\hfill\textit{#2}\\
+  \textit{#3}\\[2pt]
+  #4
+  \vspace{4pt}
+}
+
+% Project entry: \projentry{Name}{Date}{Description}{bullets}
+\newcommand{\projentry}[4]{
+  \noindent\textbf{#1}\hfill\textit{#2}\\
+  {#3}\\[2pt]
+  \begin{itemize}[nosep,leftmargin=1.5em,topsep=0pt,partopsep=0pt]
+    #4
+  \end{itemize}
+  \vspace{4pt}
+}
+
+\begin{document}
+
+% ══════════════════════════════════════════════════════════
+%  CONTACT
+% ══════════════════════════════════════════════════════════
+\begin{center}
+  {\LARGE\bfseries YOUR_NAME} \\[6pt]
+  YOUR\_PHONE \quad$\mid$\quad \href{mailto:YOUR\_EMAIL}{YOUR\_EMAIL} \quad$\mid$\quad YOUR\_LOCATION
+\end{center}
+
+% ══════════════════════════════════════════════════════════
+%  EXPERIENCE
+% ══════════════════════════════════════════════════════════
+\section{Experience}
+
+\expentry{JOB\_TITLE\_1}{DATE\_RANGE\_1}{COMPANY\_1}{LOCATION\_1}{
+  \item ACHIEVEMENT\_1 — quantified result or impact
+  \item ACHIEVEMENT\_2 — quantified result or impact
+  \item ACHIEVEMENT\_3 — quantified result or impact
+}
+
+\expentry{JOB\_TITLE\_2}{DATE\_RANGE\_2}{COMPANY\_2}{LOCATION\_2}{
+  \item ACHIEVEMENT\_1 — quantified result or impact
+  \item ACHIEVEMENT\_2 — quantified result or impact
+}
+
+% ══════════════════════════════════════════════════════════
+%  PROJECTS
+% ══════════════════════════════════════════════════════════
+\section{Projects}
+
+\projentry{PROJECT\_NAME\_1}{DATE\_OR\_TECH}{Short description of the project.}{
+  \item Project highlight or result
+  \item Project highlight or result
+}
+
+\projentry{PROJECT\_NAME\_2}{DATE\_OR\_TECH}{Short description of the project.}{
+  \item Project highlight or result
+}
+
+% ══════════════════════════════════════════════════════════
+%  EDUCATION
+% ══════════════════════════════════════════════════════════
+\section{Education}
+
+\eduentry{SCHOOL\_NAME}{DATE\_RANGE\_EDU}{DEGREE\_AND\_MAJOR}{
+  \textbf{Coursework:} relevant courses \\
+  \textbf{Research:} any research or publications
+}
+
+% ══════════════════════════════════════════════════════════
+%  SKILLS
+% ══════════════════════════════════════════════════════════
+\section{Skills}
+\textbf{Languages:} skill1, skill2, skill3, skill4, skill5 \\
+\textbf{Tools:} tool1, tool2, tool3, tool4, tool5
+
+\end{document}
