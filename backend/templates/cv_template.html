@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { size: A4; margin: 0.6in 0.6in 0.5in 0.6in; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 10pt; line-height: 1.4; color: #1a1a1a; }
+  a { color: #1a1a1a; text-decoration: none; }
+
+  /* Contact */
+  .contact { text-align: center; margin-bottom: 12pt; }
+  .contact .name { font-size: 18pt; font-weight: 700; letter-spacing: 0.5pt; }
+  .contact .details { font-size: 9.5pt; color: #333; margin-top: 4pt; }
+  .contact .details .sep { margin: 0 6pt; color: #999; }
+
+  /* Sections */
+  .section { margin-bottom: 10pt; }
+  .section-title {
+    font-size: 11pt; font-weight: 700; text-transform: uppercase; letter-spacing: 1pt;
+    border-bottom: 1.5pt solid #1a1a1a; padding-bottom: 2pt; margin-bottom: 6pt;
+  }
+
+  /* Entry rows */
+  .entry { margin-bottom: 6pt; }
+  .entry-header { display: flex; justify-content: space-between; align-items: baseline; }
+  .entry-header .left { font-weight: 700; }
+  .entry-header .right { font-style: italic; color: #444; font-size: 9.5pt; }
+  .entry-sub { font-style: italic; color: #444; font-size: 9.5pt; margin-top: 1pt; }
+  .entry-desc { font-size: 9.5pt; margin-top: 2pt; }
+
+  /* Bullet lists */
+  ul { margin: 2pt 0 0 1.5em; padding: 0; list-style: disc; }
+  li { font-size: 9.5pt; margin-bottom: 1.5pt; line-height: 1.35; }
+
+  /* Skills */
+  .skills-line { font-size: 9.5pt; margin-bottom: 2pt; }
+  .skills-line strong { font-weight: 700; }
+</style>
+</head>
+<body>
+
+<!-- CONTACT -->
+<div class="contact">
+  <div class="name">YOUR_NAME</div>
+  <div class="details">
+    YOUR_PHONE<span class="sep">|</span><a href="mailto:YOUR_EMAIL">YOUR_EMAIL</a><span class="sep">|</span>YOUR_LOCATION
+  </div>
+</div>
+
+<!-- EXPERIENCE -->
+<div class="section">
+  <div class="section-title">Experience</div>
+  <div class="entry">
+    <div class="entry-header">
+      <span class="left">JOB_TITLE_1</span>
+      <span class="right">DATE_RANGE_1</span>
+    </div>
+    <div class="entry-sub">COMPANY_1 — LOCATION_1</div>
+    <ul>
+      <li>ACHIEVEMENT_1 — quantified result or impact</li>
+      <li>ACHIEVEMENT_2 — quantified result or impact</li>
+    </ul>
+  </div>
+</div>
+
+<!-- PROJECTS -->
+<div class="section">
+  <div class="section-title">Projects</div>
+  <div class="entry">
+    <div class="entry-header">
+      <span class="left">PROJECT_NAME_1</span>
+      <span class="right">DATE_OR_TECH</span>
+    </div>
+    <div class="entry-desc">Short description of the project.</div>
+    <ul>
+      <li>Project highlight or result</li>
+    </ul>
+  </div>
+</div>
+
+<!-- EDUCATION -->
+<div class="section">
+  <div class="section-title">Education</div>
+  <div class="entry">
+    <div class="entry-header">
+      <span class="left">SCHOOL_NAME</span>
+      <span class="right">DATE_RANGE_EDU</span>
+    </div>
+    <div class="entry-sub">DEGREE_AND_MAJOR</div>
+    <div class="entry-desc"><strong>Coursework:</strong> relevant courses</div>
+  </div>
+</div>
+
+<!-- SKILLS -->
+<div class="section">
+  <div class="section-title">Skills</div>
+  <div class="skills-line"><strong>Languages:</strong> skill1, skill2, skill3</div>
+  <div class="skills-line"><strong>Tools:</strong> tool1, tool2, tool3</div>
+</div>
+
+</body>
+</html>

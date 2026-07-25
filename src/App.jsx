@@ -26,19 +26,19 @@ export default function App() {
           <div className="flex items-center gap-6">
             <a
               href="#"
-              className="text-white/40 text-xs hover:text-accent transition-colors"
+              className="press-feedback text-white/40 text-xs hover:text-accent transition-colors duration-200"
             >
               Privacy
             </a>
             <a
               href="#"
-              className="text-white/40 text-xs hover:text-accent transition-colors"
+              className="press-feedback text-white/40 text-xs hover:text-accent transition-colors duration-200"
             >
               Terms
             </a>
             <a
               href="#"
-              className="text-white/40 text-xs hover:text-accent transition-colors"
+              className="press-feedback text-white/40 text-xs hover:text-accent transition-colors duration-200"
             >
               Contact
             </a>

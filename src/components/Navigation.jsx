@@ -13,7 +13,7 @@ export default function Navigation() {
         {/* Logo */}
         <a
           href="#"
-          className="text-white text-xl font-bold tracking-tight font-jakarta"
+          className="press-feedback text-white text-xl font-bold tracking-tight font-jakarta"
           style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}
         >
           Resume<span className="text-accent">Forge</span>
@@ -33,40 +33,49 @@ export default function Navigation() {
           ))}
         </nav>
 
-        {/* Mobile hamburger */}
+        {/* Mobile hamburger — Apple: respond on pointer-down */}
         <button
           onClick={() => setMobileOpen(true)}
-          className="md:hidden text-white hover:text-accent transition-colors"
+          className="press-feedback md:hidden text-white hover:text-accent transition-colors duration-200"
           aria-label="Open menu"
         >
           <Menu size={24} />
         </button>
       </header>
 
-      {/* Mobile full-screen overlay */}
+      {/* Mobile full-screen overlay — Apple: spatial animation + translucent material */}
       <div
-        className={`fixed inset-0 z-[60] bg-dark-bg/98 flex flex-col items-center justify-center gap-8 transition-opacity duration-300 md:hidden ${
+        className={`fixed inset-0 z-[60] mobile-menu-backdrop bg-dark-bg/80 flex flex-col items-center justify-center gap-8 transition-[opacity,transform] duration-300 md:hidden ${
           mobileOpen
-            ? "opacity-100 pointer-events-auto"
-            : "opacity-0 pointer-events-none"
+            ? "opacity-100 pointer-events-auto scale-100"
+            : "opacity-0 pointer-events-none scale-95"
         }`}
+        style={{
+          transformOrigin: "top right",
+          transitionTimingFunction: "var(--ease-out)",
+        }}
       >
-        {/* Close button */}
+        {/* Close button — Apple: respond on pointer-down */}
         <button
           onClick={() => setMobileOpen(false)}
-          className="absolute top-6 right-6 text-white hover:text-accent transition-colors"
+          className="press-feedback absolute top-6 right-6 text-white hover:text-accent transition-colors duration-200"
           aria-label="Close menu"
         >
           <X size={28} />
         </button>
 
-        {NAV_LINKS.map((link) => (
+        {NAV_LINKS.map((link, i) => (
           <a
             key={link.label}
             href={link.href}
             onClick={() => setMobileOpen(false)}
-            className="text-white/80 text-2xl font-medium tracking-wide hover:text-accent transition-colors duration-200"
-            style={{ fontFamily: "Inter, sans-serif" }}
+            className={`press-feedback text-white/80 text-2xl font-medium tracking-wide hover:text-accent transition-colors duration-200 ${
+              mobileOpen ? "hero-entrance" : ""
+            }`}
+            style={{
+              fontFamily: "Inter, sans-serif",
+              animationDelay: mobileOpen ? `${0.1 + i * 0.05}s` : undefined,
+            }}
           >
             {link.label}
           </a>

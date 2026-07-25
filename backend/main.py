@@ -9,7 +9,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from crew import run_extraction, run_cleaning, run_cv_generation, run_cover_letter_generation, run_compilation, run_crew, run_generation_only
+from crew import run_extraction, run_cleaning, run_cv_generation, run_cover_letter_generation, run_compilation, run_crew, run_generation_only  # noqa: F401
 
 app = FastAPI(title="ResumeForge API", version="1.0.0")
 

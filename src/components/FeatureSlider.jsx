@@ -55,20 +55,20 @@ export default function FeatureSlider() {
       {/* Section header */}
       <div className="text-center mb-16">
         <p
-          className="text-accent text-[11px] font-bold uppercase tracking-[0.2em] mb-3"
+          className="hero-entrance hero-entrance-delay-1 text-accent text-[11px] font-bold uppercase tracking-[0.2em] mb-3"
           style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}
         >
           Why Choose Us
         </p>
         <h2
-          className="text-white text-[28px] md:text-[40px] font-extrabold tracking-tight leading-tight"
+          className="hero-entrance hero-entrance-delay-2 text-white text-[28px] md:text-[40px] font-extrabold tracking-tight leading-tight"
           style={{ fontFamily: "Inter, sans-serif" }}
         >
           Built for Modern Job Seekers
         </h2>
       </div>
 
-      {/* Feature cards */}
+      {/* Feature cards — specific transitions, no transition-all */}
       <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {FEATURES.map((feature, index) => {
           const Icon = feature.icon;
@@ -76,10 +76,10 @@ export default function FeatureSlider() {
             <div
               key={feature.title}
               ref={(el) => (cardsRef.current[index] = el)}
-              className="opacity-0 translate-y-10 transition-all duration-700 ease-out"
-              style={{ transitionDelay: `${index * 150}ms` }}
+              className="opacity-0 translate-y-10 transition-[opacity,transform] duration-500 ease-out"
+              style={{ transitionDelay: `${index * 80}ms` }}
             >
-              <div className="h-full p-6 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04] hover:border-accent/20 transition-colors duration-300">
+              <div className="press-feedback h-full p-6 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04] hover:border-accent/20 transition-[background-color,border-color] duration-200">
                 <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center mb-5">
                   <Icon size={22} className="text-accent" />
                 </div>

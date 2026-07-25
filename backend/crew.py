@@ -1,10 +1,10 @@
 import os
 import json
 import re
-import subprocess
 import tempfile
-import shutil
 from pathlib import Path
+
+from xhtml2pdf import pisa
 
 from crewai import Agent, Task, Crew, Process
 
@@ -27,24 +27,6 @@ llm = NvidiaNimLLM(
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 OUTPUT_DIR = Path(__file__).parent / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
-
-
-def sanitize_latex(text: str) -> str:
-    """Escape special LaTeX characters in user-provided text."""
-    if not isinstance(text, str):
-        return text
-    # Order matters: backslash first
-    text = text.replace("\\", "\\textbackslash{}")
-    text = text.replace("{", "\\{").replace("}", "\\}")
-    text = text.replace("\\textbackslash\\{\\}", "\\textbackslash{}")
-    text = text.replace("&", "\\&")
-    text = text.replace("%", "\\%")
-    text = text.replace("#", "\\#")
-    text = text.replace("_", "\\_")
-    text = text.replace("~", "\\textasciitilde{}")
-    text = text.replace("^", "\\textasciicircum{}")
-    text = text.replace("$", "\\$")
-    return text
 
 
 # ══════════════════════════════════════════════════════════
@@ -80,13 +62,13 @@ cleaner_agent = Agent(
 
 cv_generator_agent = Agent(
     role="ATS-Friendly CV Generator",
-    goal="Generate a professional, ATS-optimized LaTeX CV tailored to a specific job description.",
+    goal="Generate a professional, ATS-optimized HTML CV tailored to a specific job description.",
     backstory=(
-        "You are an expert resume writer and LaTeX typographer. You take structured "
-        "candidate data and a job description, then produce a single-column, ATS-friendly "
-        "LaTeX document. You match keywords from the job description, quantify achievements, "
-        "and ensure the CV is clean, professional, and passes ATS screening. "
-        "You use the exact LaTeX template structure provided to you."
+        "You are an expert resume writer. You take structured candidate data and a "
+        "job description, then produce a single-column, ATS-friendly HTML document. "
+        "You match keywords from the job description, quantify achievements, and "
+        "ensure the CV is clean, professional, and passes ATS screening. "
+        "You use the exact HTML template structure provided to you."
     ),
     llm=llm,
     verbose=True,
@@ -95,26 +77,13 @@ cv_generator_agent = Agent(
 
 cover_letter_agent = Agent(
     role="Cover Letter Writer",
-    goal="Generate a professional, tailored LaTeX cover letter for a specific job application.",
+    goal="Generate a professional, tailored HTML cover letter for a specific job application.",
     backstory=(
         "You are an expert cover letter writer. You take structured candidate data "
-        "and a job description, then produce a formal, compelling LaTeX cover letter. "
+        "and a job description, then produce a formal, compelling HTML cover letter. "
         "The letter includes: sender address, date, recipient address, a strong opening "
         "paragraph, a body that connects the candidate's experience to the role, and a "
-        "professional closing. You use the exact LaTeX template structure provided."
-    ),
-    llm=llm,
-    verbose=True,
-    allow_delegation=False,
-)
-
-compiler_agent = Agent(
-    role="LaTeX Compiler",
-    goal="Compile LaTeX source code into a PDF file using pdflatex.",
-    backstory=(
-        "You are a LaTeX compilation specialist. You take LaTeX source code, write it "
-        "to a .tex file, run pdflatex to compile it, and return the path to the "
-        "generated PDF. You handle errors gracefully and ensure the output is clean."
+        "professional closing. You use the exact HTML template structure provided."
     ),
     llm=llm,
     verbose=True,
@@ -153,37 +122,91 @@ def run_cleaning(raw_text: str) -> dict:
         result = crew.kickoff()
     except Exception as e:
         raise RuntimeError(f"Cleaning crew failed: {e}")
-    raw = result.raw.strip()
-    # Extract JSON from possible markdown code blocks
-    if "```" in raw:
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
+
+    raw = result.raw.strip() if result.raw else ""
+    print(f"[Cleaning] Raw output length: {len(raw)}")
+    if not raw and result.tasks_output:
+        for task_output in result.tasks_output:
+            if task_output.raw:
+                raw = task_output.raw.strip()
+                print(f"[Cleaning] Got raw from task_output, length: {len(raw)}")
+                break
+    if not raw:
+        raise RuntimeError("Cleaning crew returned empty output")
+
+    json_str = raw
+    if "```" in json_str:
+        parts = json_str.split("```")
+        if len(parts) >= 3:
+            json_str = parts[1]
+            if json_str.startswith("json"):
+                json_str = json_str[4:]
+            json_str = json_str.strip()
+
+    if not json_str.startswith("{"):
+        match = re.search(r"\{.*\}", json_str, re.DOTALL)
+        if match:
+            json_str = match.group(0)
+
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"Failed to parse cleaned data as JSON: {e}\nRaw output: {raw[:500]}")
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        open_braces = json_str.count("{") - json_str.count("}")
+        open_brackets = json_str.count("[") - json_str.count("]")
+        fixed = json_str + "]" * max(0, open_brackets) + "}" * max(0, open_braces)
+        try:
+            return json.loads(fixed)
+        except json.JSONDecodeError:
+            pass
+
+    raise RuntimeError(
+        f"Failed to parse cleaned data as JSON.\n"
+        f"First 300 chars: {json_str[:300]}\n"
+        f"Last 300 chars: {json_str[-300:]}"
+    )
+
+
+def _extract_html(raw: str, start_tag: str = "<!DOCTYPE") -> str:
+    """Extract HTML from LLM output, stripping markdown wrappers."""
+    html = raw.strip()
+    if "```" in html:
+        parts = html.split("```")
+        if len(parts) >= 3:
+            html = parts[1]
+            if html.startswith("html"):
+                html = html[4:]
+            html = html.strip()
+    if not html.lower().startswith("<!doctype") and not html.lower().startswith("<html"):
+        match = re.search(r"(<!DOCTYPE.*?</html>)", html, re.DOTALL | re.IGNORECASE)
+        if match:
+            html = match.group(1)
+        else:
+            # Try to find just the body content
+            match = re.search(r"<body[^>]*>(.*)</body>", html, re.DOTALL | re.IGNORECASE)
+            if match:
+                html = f"<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body>{match.group(1)}</body></html>"
+    return html
 
 
 def run_cv_generation(cleaned_data: dict, job_description: str) -> str:
-    """Task 3: Generate ATS-friendly LaTeX CV."""
-    template = (TEMPLATES_DIR / "cv_template.tex").read_text(encoding="utf-8")
+    """Task 3: Generate ATS-friendly HTML CV."""
+    template = (TEMPLATES_DIR / "cv_template.html").read_text(encoding="utf-8")
     task = Task(
         description=(
-            "You are given a LaTeX CV template and structured candidate data.\n\n"
-            f"LATEX TEMPLATE:\n{template}\n\n"
+            "You are given an HTML/CSS CV template and structured candidate data.\n\n"
+            f"HTML TEMPLATE:\n{template}\n\n"
             f"CANDIDATE DATA (JSON):\n{json.dumps(cleaned_data, indent=2)}\n\n"
             f"JOB DESCRIPTION:\n{job_description}\n\n"
-            "Generate a complete, compilable LaTeX document that:\n"
-            "1. Uses the EXACT template structure and custom commands (\\expentry, \\eduentry, \\projentry)\n"
+            "Generate a complete HTML document that:\n"
+            "1. Uses the EXACT same CSS classes and structure as the template\n"
             "2. Fills in all placeholders with the candidate's real data\n"
             "3. Tailors bullet points to match keywords from the job description\n"
             "4. Quantifies achievements where possible\n"
             "5. Keeps the single-column ATS-friendly format\n"
-            "6. Escapes special LaTeX characters (percent, ampersand, hash, underscore, braces) in user text\n\n"
-            "Output ONLY the complete LaTeX source code, nothing else."
+            "6. Skips sections that have no data (e.g. if experience is empty, omit the Experience section)\n\n"
+            "Output ONLY the complete HTML source code, nothing else."
         ),
-        expected_output="Complete compilable LaTeX source code for the CV.",
+        expected_output="Complete HTML source code for the CV.",
         agent=cv_generator_agent,
     )
     crew = Crew(agents=[cv_generator_agent], tasks=[task], process=Process.sequential, verbose=True, tracing=True)
@@ -191,27 +214,31 @@ def run_cv_generation(cleaned_data: dict, job_description: str) -> str:
         result = crew.kickoff()
     except Exception as e:
         raise RuntimeError(f"CV generation crew failed: {e}")
-    latex = result.raw.strip()
-    # Strip markdown code block wrappers if present
-    if latex.startswith("```"):
-        latex = re.sub(r"^```\w*\n?", "", latex)
-        latex = re.sub(r"\n?```$", "", latex)
-    if not latex.strip().startswith("\\documentclass"):
-        raise RuntimeError(f"CV generator did not return valid LaTeX.\nOutput starts with: {latex[:200]}")
-    return latex
+    html = result.raw.strip() if result.raw else ""
+    if not html and result.tasks_output:
+        for task_output in result.tasks_output:
+            if task_output.raw:
+                html = task_output.raw.strip()
+                break
+    if not html:
+        raise RuntimeError("CV generation crew returned empty output")
+    html = _extract_html(html)
+    if "<html" not in html.lower() and "<body" not in html.lower():
+        raise RuntimeError(f"CV generator did not return valid HTML.\nOutput starts with: {html[:200]}")
+    return html
 
 
 def run_cover_letter_generation(cleaned_data: dict, job_description: str) -> str:
-    """Task 4: Generate tailored LaTeX cover letter."""
-    template = (TEMPLATES_DIR / "cover_letter_template.tex").read_text(encoding="utf-8")
+    """Task 4: Generate tailored HTML cover letter."""
+    template = (TEMPLATES_DIR / "cover_letter_template.html").read_text(encoding="utf-8")
     task = Task(
         description=(
-            "You are given a LaTeX cover letter template and structured candidate data.\n\n"
-            f"LATEX TEMPLATE:\n{template}\n\n"
+            "You are given an HTML/CSS cover letter template and structured candidate data.\n\n"
+            f"HTML TEMPLATE:\n{template}\n\n"
             f"CANDIDATE DATA (JSON):\n{json.dumps(cleaned_data, indent=2)}\n\n"
             f"JOB DESCRIPTION:\n{job_description}\n\n"
-            "Generate a complete, compilable LaTeX cover letter that:\n"
-            "1. Uses the EXACT template structure with all placeholder fields\n"
+            "Generate a complete HTML cover letter that:\n"
+            "1. Uses the EXACT same CSS classes and structure as the template\n"
             "2. Fills in sender address from candidate data (use name, email, phone, location)\n"
             "3. Sets a current date\n"
             "4. Infers recipient details from the job description (company name, title)\n"
@@ -219,11 +246,10 @@ def run_cover_letter_generation(cleaned_data: dict, job_description: str) -> str
             "   - Introduction: state the role and why you are applying\n"
             "   - Fit: connect candidate's experience to job requirements with specific examples\n"
             "   - Closing: express enthusiasm and call to action\n"
-            "6. Uses formal tone throughout\n"
-            "7. Escapes special LaTeX characters in user text\n\n"
-            "Output ONLY the complete LaTeX source code, nothing else."
+            "6. Uses formal tone throughout\n\n"
+            "Output ONLY the complete HTML source code, nothing else."
         ),
-        expected_output="Complete compilable LaTeX source code for the cover letter.",
+        expected_output="Complete HTML source code for the cover letter.",
         agent=cover_letter_agent,
     )
     crew = Crew(agents=[cover_letter_agent], tasks=[task], process=Process.sequential, verbose=True, tracing=True)
@@ -231,73 +257,33 @@ def run_cover_letter_generation(cleaned_data: dict, job_description: str) -> str
         result = crew.kickoff()
     except Exception as e:
         raise RuntimeError(f"Cover letter generation crew failed: {e}")
-    latex = result.raw.strip()
-    if latex.startswith("```"):
-        latex = re.sub(r"^```\w*\n?", "", latex)
-        latex = re.sub(r"\n?```$", "", latex)
-    if not latex.strip().startswith("\\documentclass"):
-        raise RuntimeError(f"Cover letter generator did not return valid LaTeX.\nOutput starts with: {latex[:200]}")
-    return latex
+    html = result.raw.strip() if result.raw else ""
+    if not html and result.tasks_output:
+        for task_output in result.tasks_output:
+            if task_output.raw:
+                html = task_output.raw.strip()
+                break
+    if not html:
+        raise RuntimeError("Cover letter generation crew returned empty output")
+    html = _extract_html(html)
+    if "<html" not in html.lower() and "<body" not in html.lower():
+        raise RuntimeError(f"Cover letter generator did not return valid HTML.\nOutput starts with: {html[:200]}")
+    return html
 
 
-def run_compilation(latex_source: str, output_name: str) -> Path:
-    """Task 5: Compile LaTeX to PDF."""
-    # Find pdflatex: check PATH first, then common MiKTeX locations
-    pdflatex_cmd = shutil.which("pdflatex")
-    if not pdflatex_cmd:
-        # Windows MiKTeX
-        miktex_path = Path.home() / "AppData/Local/Programs/MiKTeX/miktex/bin/x64/pdflatex.exe"
-        if miktex_path.exists():
-            pdflatex_cmd = str(miktex_path)
-        else:
-            # Linux texlive
-            texlive_path = Path("/usr/bin/pdflatex")
-            if texlive_path.exists():
-                pdflatex_cmd = str(texlive_path)
-            else:
-                raise RuntimeError("pdflatex not found. Install MiKTeX (Windows) or texlive (Linux).")
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tex_path = Path(tmpdir) / f"{output_name}.tex"
-        tex_path.write_text(latex_source, encoding="utf-8")
-
-        # Run pdflatex twice for references
-        # --enable-installer: auto-download missing MiKTeX packages on first run (Windows)
-        pdflatex_args = [pdflatex_cmd, "-interaction=nonstopmode", "-halt-on-error"]
-        if "MiKTeX" in pdflatex_cmd or "miktex" in pdflatex_cmd.lower():
-            pdflatex_args.append("-enable-installer")
-        pdflatex_args.extend(["-output-directory", tmpdir, str(tex_path)])
-
-        for i in range(2):
-            result = subprocess.run(
-                pdflatex_args,
-                capture_output=True, text=True, timeout=300,
-            )
-            if result.returncode != 0:
-                # Read the log file for detailed error info
-                log_path = Path(tmpdir) / f"{output_name}.log"
-                log_excerpt = ""
-                if log_path.exists():
-                    log_text = log_path.read_text(errors="replace")
-                    # Find the error line
-                    for line in log_text.split("\n"):
-                        if line.startswith("!") or "error" in line.lower():
-                            log_excerpt += line + "\n"
-                    if not log_excerpt:
-                        log_excerpt = log_text[-1500:]
-                raise RuntimeError(
-                    f"pdflatex failed on run {i+1}:\nSTDOUT:\n{result.stdout[-1000:]}\n"
-                    f"STDERR:\n{result.stderr[-500:]}\nLOG ERRORS:\n{log_excerpt}"
-                )
-
-        pdf_path = Path(tmpdir) / f"{output_name}.pdf"
-        if not pdf_path.exists():
-            raise RuntimeError("PDF was not generated.")
-
-        # Copy to output directory
-        final_path = OUTPUT_DIR / f"{output_name}.pdf"
-        final_path.write_bytes(pdf_path.read_bytes())
-        return final_path
+def run_compilation(html_source: str, output_name: str) -> Path:
+    """Task 5: Convert HTML to PDF using xhtml2pdf."""
+    final_path = OUTPUT_DIR / f"{output_name}.pdf"
+    try:
+        with open(final_path, "wb") as f:
+            status = pisa.CreatePDF(html_source, dest=f)
+            if status.err:
+                raise RuntimeError(f"xhtml2pdf conversion failed with {status.err} errors")
+    except Exception as e:
+        raise RuntimeError(f"PDF generation failed: {e}")
+    if not final_path.exists() or final_path.stat().st_size == 0:
+        raise RuntimeError("PDF was not generated or is empty.")
+    return final_path
 
 
 # ══════════════════════════════════════════════════════════
@@ -320,21 +306,21 @@ def run_generation_only(
 
     if output_type in ("cv", "both"):
         print("[Generation] Starting CV generation...")
-        cv_latex = run_cv_generation(cleaned_data, job_description)
-        print("[Generation] CV LaTeX generated, compiling...")
-        cv_pdf = run_compilation(cv_latex, f"cv_{run_id}")
+        cv_html = run_cv_generation(cleaned_data, job_description)
+        print("[Generation] CV HTML generated, converting to PDF...")
+        cv_pdf = run_compilation(cv_html, f"cv_{run_id}")
         results["cv_pdf"] = str(cv_pdf)
-        results["cv_latex"] = cv_latex
-        print(f"[Generation] CV compiled: {cv_pdf}")
+        results["cv_html"] = cv_html
+        print(f"[Generation] CV PDF created: {cv_pdf}")
 
     if output_type in ("cover_letter", "both"):
         print("[Generation] Starting cover letter generation...")
-        cl_latex = run_cover_letter_generation(cleaned_data, job_description)
-        print("[Generation] Cover letter LaTeX generated, compiling...")
-        cl_pdf = run_compilation(cl_latex, f"cover_letter_{run_id}")
+        cl_html = run_cover_letter_generation(cleaned_data, job_description)
+        print("[Generation] Cover letter HTML generated, converting to PDF...")
+        cl_pdf = run_compilation(cl_html, f"cover_letter_{run_id}")
         results["cover_letter_pdf"] = str(cl_pdf)
-        results["cover_letter_latex"] = cl_latex
-        print(f"[Generation] Cover letter compiled: {cl_pdf}")
+        results["cover_letter_html"] = cl_html
+        print(f"[Generation] Cover letter PDF created: {cl_pdf}")
 
     results["cleaned_data"] = cleaned_data
     return results
@@ -350,16 +336,8 @@ def run_crew(
     Full pipeline: extract -> clean -> generate -> compile.
     Returns dict with paths to generated PDFs.
     """
-    import uuid
-    run_id = uuid.uuid4().hex[:8]
-
-    # Step 1: Extract
     raw_text = run_extraction(file_bytes, filename)
-
-    # Step 2: Clean
     cleaned = run_cleaning(raw_text)
-
-    # Step 3+4+5: Generate and compile
     results = run_generation_only(cleaned, job_description, output_type)
     results["extracted_text"] = raw_text
     return results

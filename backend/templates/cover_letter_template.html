@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { size: A4; margin: 1in; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11pt; line-height: 1.5; color: #1a1a1a; }
+
+  .sender { margin-bottom: 24pt; }
+  .date { margin-bottom: 24pt; }
+  .recipient { margin-bottom: 24pt; }
+  .salutation { margin-bottom: 6pt; }
+  .body p { margin-bottom: 12pt; text-align: justify; }
+  .signoff { margin-top: 12pt; }
+  .signoff .name { margin-top: 36pt; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div class="sender">
+  SENDER_NAME<br>
+  SENDER_STREET<br>
+  SENDER_CITY_STATE_ZIP<br>
+  SENDER_EMAIL<br>
+  SENDER_PHONE
+</div>
+
+<div class="date">LETTER_DATE</div>
+
+<div class="recipient">
+  RECIPIENT_NAME<br>
+  RECIPIENT_TITLE<br>
+  COMPANY_NAME<br>
+  COMPANY_STREET<br>
+  COMPANY_CITY_STATE_ZIP
+</div>
+
+<div class="salutation">Dear RECIPIENT_TITLE_AND_NAME,</div>
+
+<div class="body">
+  <p>PARAGRAPH_1_INTRODUCTION</p>
+  <p>PARAGRAPH_2_FIT</p>
+  <p>PARAGRAPH_3_CLOSING</p>
+</div>
+
+<div class="signoff">
+  Sincerely,<br>
+  <div class="name">YOUR_NAME</div>
+</div>
+
+</body>
+</html>

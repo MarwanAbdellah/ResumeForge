@@ -1,14 +1,5 @@
 FROM python:3.12-slim
 
-# Install texlive (lighter than MiKTeX for Docker, includes pdflatex)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    texlive-latex-base \
-    texlive-latex-extra \
-    texlive-fonts-recommended \
-    texlive-fonts-latex-extra \
-    latexmk \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 COPY requirements.txt .

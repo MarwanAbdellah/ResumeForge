@@ -1,9 +1,11 @@
 export default function LiquidGlassCard() {
   return (
-    <div className="relative flex justify-center -translate-y-[50px] z-10">
+    <div className="relative flex justify-center z-10">
       <div
         className="
           glass-card-border
+          glass-entrance
+          press-feedback
           w-[160px] h-[160px] md:w-[200px] md:h-[200px]
           rounded-2xl
           flex flex-col items-center justify-center

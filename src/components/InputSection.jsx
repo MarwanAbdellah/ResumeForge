@@ -632,19 +632,20 @@ export default function InputSection() {
           />
         )}
 
-        {/* Generate button */}
+        {/* Generate button — Apple: specific transitions, press feedback */}
         <div className="flex flex-col items-center mb-10">
           <button
             onClick={handleGenerate}
             disabled={!canGenerate || isGenerating}
             className={`
+              press-feedback
               inline-flex items-center gap-2.5
               px-10 py-4 rounded-full
               text-sm font-bold uppercase tracking-wide
-              transition-all duration-300
+              transition-[background-color,gap,opacity] duration-200
               ${
                 canGenerate && !isGenerating
-                  ? "bg-accent text-dark-bg hover:bg-accent/90 hover:gap-3 active:scale-[0.98] cursor-pointer"
+                  ? "bg-accent text-dark-bg hover:bg-accent/90 hover:gap-3 cursor-pointer"
                   : "bg-white/[0.05] text-white/30 cursor-not-allowed"
               }
             `}
@@ -685,7 +686,7 @@ export default function InputSection() {
               </div>
             </div>
 
-            {/* Download & Preview buttons */}
+            {/* Download & Preview buttons — Apple: specific transitions, press feedback */}
             <div className="flex flex-wrap justify-center gap-3">
               {cvPdfPath && (
                 <>
@@ -693,14 +694,14 @@ export default function InputSection() {
                     href={`${API_URL}/api/preview/${cvPdfPath}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/[0.05] border border-white/[0.1] rounded-xl text-white/80 text-sm hover:bg-white/[0.08] hover:text-white transition-all"
+                    className="press-feedback inline-flex items-center gap-2 px-5 py-2.5 bg-white/[0.05] border border-white/[0.1] rounded-xl text-white/80 text-sm hover:bg-white/[0.08] hover:text-white transition-[background-color,color] duration-200"
                   >
                     <Eye size={15} />
                     Preview CV
                   </a>
                   <a
                     href={`${API_URL}/api/download/${cvPdfPath}`}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent/10 border border-accent/20 rounded-xl text-accent text-sm hover:bg-accent/20 transition-all"
+                    className="press-feedback inline-flex items-center gap-2 px-5 py-2.5 bg-accent/10 border border-accent/20 rounded-xl text-accent text-sm hover:bg-accent/20 transition-[background-color] duration-200"
                   >
                     <Download size={15} />
                     Download CV
@@ -713,14 +714,14 @@ export default function InputSection() {
                     href={`${API_URL}/api/preview/${clPdfPath}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/[0.05] border border-white/[0.1] rounded-xl text-white/80 text-sm hover:bg-white/[0.08] hover:text-white transition-all"
+                    className="press-feedback inline-flex items-center gap-2 px-5 py-2.5 bg-white/[0.05] border border-white/[0.1] rounded-xl text-white/80 text-sm hover:bg-white/[0.08] hover:text-white transition-[background-color,color] duration-200"
                   >
                     <Eye size={15} />
                     Preview Cover Letter
                   </a>
                   <a
                     href={`${API_URL}/api/download/${clPdfPath}`}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent/10 border border-accent/20 rounded-xl text-accent text-sm hover:bg-accent/20 transition-all"
+                    className="press-feedback inline-flex items-center gap-2 px-5 py-2.5 bg-accent/10 border border-accent/20 rounded-xl text-accent text-sm hover:bg-accent/20 transition-[background-color] duration-200"
                   >
                     <Download size={15} />
                     Download Cover Letter
@@ -757,7 +758,7 @@ export default function InputSection() {
                 {cvPdfPath && (
                   <button
                     onClick={() => setPreviewFile(cvPdfPath)}
-                    className="text-white/40 text-xs hover:text-accent transition-colors underline underline-offset-2"
+                    className="press-feedback text-white/40 text-xs hover:text-accent transition-colors duration-200 underline underline-offset-2"
                   >
                     View CV inline
                   </button>
@@ -765,7 +766,7 @@ export default function InputSection() {
                 {clPdfPath && (
                   <button
                     onClick={() => setPreviewFile(clPdfPath)}
-                    className="text-white/40 text-xs hover:text-accent transition-colors underline underline-offset-2"
+                    className="press-feedback text-white/40 text-xs hover:text-accent transition-colors duration-200 underline underline-offset-2"
                   >
                     View Cover Letter inline
                   </button>
