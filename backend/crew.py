@@ -245,22 +245,33 @@ def run_compilation(latex_source: str, output_name: str) -> Path:
     # Find pdflatex: check PATH first, then common MiKTeX locations
     pdflatex_cmd = shutil.which("pdflatex")
     if not pdflatex_cmd:
+        # Windows MiKTeX
         miktex_path = Path.home() / "AppData/Local/Programs/MiKTeX/miktex/bin/x64/pdflatex.exe"
         if miktex_path.exists():
             pdflatex_cmd = str(miktex_path)
         else:
-            raise RuntimeError("pdflatex not found. Add MiKTeX to PATH or install it.")
+            # Linux texlive
+            texlive_path = Path("/usr/bin/pdflatex")
+            if texlive_path.exists():
+                pdflatex_cmd = str(texlive_path)
+            else:
+                raise RuntimeError("pdflatex not found. Install MiKTeX (Windows) or texlive (Linux).")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tex_path = Path(tmpdir) / f"{output_name}.tex"
         tex_path.write_text(latex_source, encoding="utf-8")
 
         # Run pdflatex twice for references
+        # --enable-installer: auto-download missing MiKTeX packages on first run (Windows)
+        pdflatex_args = [pdflatex_cmd, "-interaction=nonstopmode", "-halt-on-error"]
+        if "MiKTeX" in pdflatex_cmd or "miktex" in pdflatex_cmd.lower():
+            pdflatex_args.append("-enable-installer")
+        pdflatex_args.extend(["-output-directory", tmpdir, str(tex_path)])
+
         for i in range(2):
             result = subprocess.run(
-                [pdflatex_cmd, "-interaction=nonstopmode", "-halt-on-error",
-                 "-output-directory", tmpdir, str(tex_path)],
-                capture_output=True, text=True, timeout=60,
+                pdflatex_args,
+                capture_output=True, text=True, timeout=300,
             )
             if result.returncode != 0:
                 # Read the log file for detailed error info

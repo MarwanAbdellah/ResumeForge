@@ -101,4 +101,23 @@ uv run python main.py  # Runs on http://localhost:8000
 npm run dev  # Runs on http://localhost:5173
 ```
 
+## Deployment
+- **Frontend**: Vercel (React/Vite) — set `VITE_API_URL` env var
+- **Backend**: Railway (Docker) — needs texlive for pdflatex
+- **Why not Vercel for backend?** Vercel serverless can't run pdflatex (no system packages, timeout limits)
+- See `DEPLOY.md` for full step-by-step guide
+- `vercel.json` configures API proxy to Railway backend
+- `backend/Dockerfile` installs texlive + Python deps
+
+## Files Added/Modified (Session 2)
+- `backend/tools/nvidia_nim.py` — custom NvidiaNimLLM (requests-based, diffusiongemma)
+- `backend/crew.py` — switched to diffusiongemma, UTF-8 template reads, 300s pdflatex timeout
+- `backend/main.py` — JSON body for `/api/generate`, CORS for deployment URLs
+- `src/components/InputSection.jsx` — sends cleaned_data JSON, configurable API_URL
+- `DEPLOY.md` — deployment guide
+- `vercel.json` — frontend routing + API proxy
+- `backend/Dockerfile` — texlive + Python for Railway
+- `CONTEXT.md` — this file
+
 ## Date: 2026-07-25
+## Last Updated: 2026-07-25 (Session 2: diffusiongemma + deployment)
