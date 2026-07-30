@@ -1257,7 +1257,17 @@ def html_to_latex(html_source: str, doc_type: str = "cv") -> str:
     if r"\documentclass" in html_source:
         return html_source
 
-    from bs4 import BeautifulSoup
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        BeautifulSoup = None
+
+    if not BeautifulSoup:
+        # Fallback regex parsing if bs4 is missing
+        clean_text = re.sub(r'<style>[\s\S]*?</style>', '', html_source, flags=re.IGNORECASE)
+        clean_text = re.sub(r'<[^>]+>', ' ', clean_text).strip()
+        return f"\\documentclass{{article}}\n\\begin{{document}}\n{_latex_escape(clean_text)}\n\\end{{document}}"
+
     soup = BeautifulSoup(html_source, "html.parser")
 
     name_el = soup.find(class_=re.compile(r"name", re.I)) or soup.find(["h1", "h2"])
