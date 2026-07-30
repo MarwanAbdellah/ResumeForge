@@ -1231,29 +1231,214 @@ def run_cover_letter_generation(enriched_data: dict, jd_analysis: dict, notes: s
     return _clean_cover_letter_artifacts(html, enriched_data)
 
 
+def _latex_escape(text: str) -> str:
+    """Escape special LaTeX characters safely."""
+    if not text:
+        return ""
+    mapping = [
+        ('\\', r'\textbackslash{}'),
+        ('&', r'\&'),
+        ('%', r'\%'),
+        ('$', r'\$'),
+        ('#', r'\#'),
+        ('_', r'\_'),
+        ('{', r'\{'),
+        ('}', r'\}'),
+        ('~', r'\textasciitilde{}'),
+        ('^', r'\textasciicircum{}'),
+    ]
+    for orig, repl in mapping:
+        text = text.replace(orig, repl)
+    return text
+
+
+def html_to_latex(html_source: str, doc_type: str = "cv") -> str:
+    """Convert HTML source to a clean, ATS-optimized LaTeX document."""
+    if r"\documentclass" in html_source:
+        return html_source
+
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html_source, "html.parser")
+
+    name_el = soup.find(class_=re.compile(r"name", re.I)) or soup.find(["h1", "h2"])
+    name = name_el.get_text(strip=True) if name_el else "Candidate"
+
+    contact_el = soup.find(class_=re.compile(r"contact", re.I))
+    contact_items = []
+    if contact_el:
+        for a in contact_el.find_all("a"):
+            href = a.get("href", "")
+            text = a.get_text(strip=True)
+            if href.startswith("mailto:"):
+                email_val = href.replace("mailto:", "")
+                contact_items.append(f"\\href{{mailto:{_latex_escape(email_val)}}}{{{_latex_escape(text or email_val)}}}")
+            elif href.startswith("http"):
+                contact_items.append(f"\\href{{{_latex_escape(href)}}}{{{_latex_escape(text or href)}}}")
+        full_contact_text = contact_el.get_text(" ", strip=True)
+        phone_match = re.search(r"(\(\+\d+\)\s*[\d\s-]+|\+?\d[\d\s-]{8,14}\d)", full_contact_text)
+        if phone_match and not any(phone_match.group(0) in item for item in contact_items):
+            contact_items.insert(0, _latex_escape(phone_match.group(0).strip()))
+
+    contact_line = " \\quad$\\cdot$\\quad ".join(contact_items) if contact_items else ""
+
+    latex_sections = []
+    sections = soup.find_all(class_=re.compile(r"section", re.I))
+    if not sections:
+        sections = [soup.find("body") or soup]
+
+    for sec in sections:
+        sec_title_el = sec.find(class_=re.compile(r"title|header", re.I)) or sec.find(["h2", "h3"])
+        sec_title = sec_title_el.get_text(strip=True) if sec_title_el else ""
+
+        if sec_title:
+            latex_sections.append(f"\n\\section*{{{_latex_escape(sec_title)}}}")
+
+        for child in sec.children:
+            if child == sec_title_el or getattr(child, "name", None) in ("h1", "h2", "h3"):
+                continue
+            if not getattr(child, "name", None):
+                text = str(child).strip()
+                if text:
+                    latex_sections.append(_latex_escape(text))
+                continue
+
+            if child.name == "ul":
+                items = [f"  \\item {_latex_escape(li.get_text(strip=True))}" for li in child.find_all("li")]
+                if items:
+                    latex_sections.append("\\begin{itemize}[leftmargin=1.5em, itemsep=2pt, topsep=2pt]\n" + "\n".join(items) + "\n\\end{itemize}")
+            elif child.name == "p":
+                latex_sections.append(_latex_escape(child.get_text(strip=True)))
+            elif child.name == "div":
+                entry_title = child.find(class_=re.compile(r"title|job|name", re.I))
+                entry_sub = child.find(class_=re.compile(r"company|school|sub", re.I))
+                entry_date = child.find(class_=re.compile(r"date|year", re.I))
+                entry_loc = child.find(class_=re.compile(r"location|city", re.I))
+
+                if entry_title or entry_sub:
+                    t_str = _latex_escape(entry_title.get_text(strip=True)) if entry_title else ""
+                    s_str = _latex_escape(entry_sub.get_text(strip=True)) if entry_sub else ""
+                    d_str = _latex_escape(entry_date.get_text(strip=True)) if entry_date else ""
+                    l_str = _latex_escape(entry_loc.get_text(strip=True)) if entry_loc else ""
+
+                    header_line = f"\\textbf{{{t_str}}}" if t_str else ""
+                    if d_str or l_str:
+                        right_info = f"{l_str} \\quad {d_str}".strip(" \\quad")
+                        header_line += f" \\hfill {right_info}"
+                    header_line += "\\\\"
+
+                    if s_str:
+                        header_line += f"\n\\textit{{{s_str}}}"
+
+                    latex_sections.append(header_line)
+
+                entry_ul = child.find("ul")
+                if entry_ul:
+                    items = [f"  \\item {_latex_escape(li.get_text(strip=True))}" for li in entry_ul.find_all("li")]
+                    if items:
+                        latex_sections.append("\\begin{itemize}[leftmargin=1.5em, itemsep=2pt, topsep=2pt]\n" + "\n".join(items) + "\n\\end{itemize}")
+
+    body_latex = "\n\n".join(latex_sections)
+
+    latex_doc = f"""\\documentclass[10pt,a4paper]{{article}}
+\\usepackage[utf8]{{inputenc}}
+\\usepackage[margin=0.5in]{{geometry}}
+\\usepackage{{hyperref}}
+\\usepackage{{enumitem}}
+\\usepackage{{xcolor}}
+
+\\hypersetup{{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+}}
+
+\\pagestyle{{empty}}
+
+\\begin{{document}}
+
+\\begin{{center}}
+    {{\\Huge \\textbf{{{_latex_escape(name)}}}}}\\\\[4pt]
+    \\small {contact_line}
+\\end{{center}}
+
+\\vspace{{-6pt}}
+\\hrulefill
+\\vspace{{6pt}}
+
+{body_latex}
+
+\\end{{document}}
+"""
+    return latex_doc
+
+
+def compile_latex_to_pdf(tex_source: str, output_name: str) -> Path:
+    """Compile LaTeX source to PDF using pdflatex command line."""
+    import shutil
+    import subprocess
+
+    pdflatex_bin = shutil.which("pdflatex") or r"C:\Users\Marwan\AppData\Local\Programs\MiKTeX\miktex\bin\x64\pdflatex.exe"
+    if not os.path.exists(pdflatex_bin) and not shutil.which("pdflatex"):
+        raise FileNotFoundError("pdflatex compiler binary not found on system.")
+
+    tex_path = OUTPUT_DIR / f"{output_name}.tex"
+    pdf_path = OUTPUT_DIR / f"{output_name}.pdf"
+
+    tex_path.write_text(tex_source, encoding="utf-8")
+
+    cmd = [
+        pdflatex_bin,
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        f"-output-directory={OUTPUT_DIR.resolve()}",
+        str(tex_path.resolve()),
+    ]
+
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    for ext in (".aux", ".log", ".out", ".tex"):
+        aux_file = OUTPUT_DIR / f"{output_name}{ext}"
+        if aux_file.exists():
+            try:
+                aux_file.unlink()
+            except Exception:
+                pass
+
+    if proc.returncode != 0 or not pdf_path.exists() or pdf_path.stat().st_size == 0:
+        raise RuntimeError(f"pdflatex exit code {proc.returncode}. Stderr: {proc.stderr[:300]}")
+
+    return pdf_path
+
+
 def run_compilation(html_source: str, output_name: str) -> Path:
-    """Agent 7: Convert HTML to PDF (tool-based, no LLM) with resilient CSS repair."""
+    """Agent 7: Compile document to PDF using LaTeX compiler (pdflatex) with xhtml2pdf fallback."""
     final_path = OUTPUT_DIR / f"{output_name}.pdf"
 
-    # Always enforce verified, clean CSS template to prevent any LLM HTML-in-CSS corruption
+    # 1. Attempt LaTeX Compilation (pdflatex)
+    try:
+        doc_type = "cover_letter" if "cover_letter_" in output_name else "cv"
+        tex_source = html_to_latex(html_source, doc_type=doc_type)
+        compiled_pdf = compile_latex_to_pdf(tex_source, output_name)
+        if compiled_pdf.exists() and compiled_pdf.stat().st_size > 0:
+            logger.info(f"[Agent 7] LaTeX compilation succeeded: {compiled_pdf.name}")
+            return compiled_pdf
+    except Exception as e:
+        logger.warning(f"[Agent 7] LaTeX compilation attempt failed ({e}) — falling back to clean HTML/xhtml2pdf...")
+
+    # 2. Fallback: xhtml2pdf
     template_file = "cv_template.html" if "cv_" in output_name else "cover_letter_template.html"
     template_css = (TEMPLATES_DIR / template_file).read_text(encoding="utf-8")
     style_match = re.search(r'<style>([\s\S]*?)</style>', template_css, flags=re.IGNORECASE)
     clean_style = style_match.group(0) if style_match else "<style></style>"
 
-    # 1. Remove all existing <style>...</style> blocks from html_source
     clean_html = re.sub(r'<style>[\s\S]*?</style>', '', html_source, flags=re.IGNORECASE)
-    
-    # 2. Handle any unclosed <style> tag fragments
     clean_html = re.sub(r'<style>[\s\S]*?(?=<body|<div|<head)', '', clean_html, flags=re.IGNORECASE)
 
-    # 3. Clean body extraction
     body_content = clean_html
     body_match = re.search(r'<body[^>]*>([\s\S]*?)</body>', clean_html, flags=re.IGNORECASE)
     if body_match:
         body_content = body_match.group(1)
 
-    # Reconstruct pristine, valid HTML document with verified template CSS
     sanitized_html = (
         f'<!DOCTYPE html>\n'
         f'<html lang="en">\n'
