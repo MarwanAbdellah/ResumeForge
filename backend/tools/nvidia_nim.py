@@ -65,33 +65,36 @@ class NvidiaNimLLM(BaseLLM):
             "Accept": "application/json",
         }
 
-        try:
-            resp = requests.post(
-                self.nim_base_url,
-                headers=headers,
-                json=payload,
-                timeout=self.nim_timeout,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            content = data["choices"][0]["message"]["content"]
-            return content
+        import time
+        max_retries = 3
+        last_err = None
 
-        except requests.exceptions.Timeout:
-            raise RuntimeError(
-                f"NVIDIA NIM API timed out after {self.nim_timeout}s. "
-                f"Model '{self.nim_model}' may be slow to respond."
-            )
-        except requests.exceptions.HTTPError as e:
-            raise RuntimeError(
-                f"NVIDIA NIM API HTTP error: {e}\nResponse: {resp.text[:500]}"
-            )
-        except (KeyError, IndexError) as e:
-            raise RuntimeError(
-                f"Unexpected API response format: {e}\nResponse: {json.dumps(data)[:500]}"
-            )
-        except Exception as e:
-            raise RuntimeError(f"NVIDIA NIM API call failed: {e}")
+        for attempt in range(1, max_retries + 1):
+            try:
+                resp = requests.post(
+                    self.nim_base_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=self.nim_timeout,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+                return content
+
+            except requests.exceptions.Timeout:
+                last_err = f"NVIDIA NIM API timed out after {self.nim_timeout}s."
+            except requests.exceptions.HTTPError as e:
+                last_err = f"NVIDIA NIM API HTTP error: {e}\nResponse: {resp.text[:500]}"
+            except (KeyError, IndexError) as e:
+                last_err = f"Unexpected API response format: {e}\nResponse: {json.dumps(data)[:500]}"
+            except Exception as e:
+                last_err = f"NVIDIA NIM API connection failed: {e}"
+
+            if attempt < max_retries:
+                time.sleep( attempt * 2 )
+
+        raise RuntimeError(f"NVIDIA NIM API call failed after {max_retries} attempts. Last error: {last_err}")
 
     def supports_function_calling(self) -> bool:
         return False

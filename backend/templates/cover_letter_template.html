@@ -3,38 +3,107 @@
 <head>
 <meta charset="UTF-8">
 <style>
-  @page { size: A4; margin: 1in; }
+  @page { size: A4; margin: 1in 1.1in; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11pt; line-height: 1.5; color: #1a1a1a; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.6;
+    color: #111;
+    background: #fff;
+  }
 
-  .sender { margin-bottom: 24pt; }
-  .date { margin-bottom: 24pt; }
-  .recipient { margin-bottom: 24pt; }
-  .salutation { margin-bottom: 6pt; }
-  .body p { margin-bottom: 12pt; text-align: justify; }
-  .signoff { margin-top: 12pt; }
-  .signoff .name { margin-top: 36pt; font-weight: 700; }
+  /* ── Sender Block ───────────────────────────────── */
+  .sender {
+    margin-bottom: 22pt;
+  }
+  .sender .sender-name {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #0a0a0a;
+    margin-bottom: 3pt;
+  }
+  .sender .sender-detail {
+    font-size: 9.5pt;
+    color: #444;
+    line-height: 1.5;
+  }
+  .sender .sender-detail a { color: #444; text-decoration: none; }
+
+  /* ── Date ───────────────────────────────────────── */
+  .date {
+    margin-bottom: 20pt;
+    font-size: 10.5pt;
+    color: #222;
+  }
+
+  /* ── Recipient ──────────────────────────────────── */
+  .recipient {
+    margin-bottom: 20pt;
+    font-size: 10.5pt;
+    color: #222;
+    line-height: 1.55;
+  }
+  .recipient .company { font-weight: 700; color: #0a0a0a; }
+
+  /* ── Divider ────────────────────────────────────── */
+  .divider {
+    border: none;
+    border-top: 0.75pt solid #ccc;
+    margin-bottom: 18pt;
+  }
+
+  /* ── Salutation ─────────────────────────────────── */
+  .salutation {
+    margin-bottom: 12pt;
+    font-size: 10.5pt;
+    font-weight: 600;
+    color: #0a0a0a;
+  }
+
+  /* ── Body ───────────────────────────────────────── */
+  .body p {
+    margin-bottom: 12pt;
+    text-align: justify;
+    font-size: 10.5pt;
+    color: #1a1a1a;
+    hyphens: auto;
+  }
+
+  /* ── Sign-off ───────────────────────────────────── */
+  .signoff {
+    margin-top: 14pt;
+    font-size: 10.5pt;
+    color: #222;
+  }
+  .signoff .signoff-phrase { margin-bottom: 32pt; }
+  .signoff .name {
+    font-weight: 700;
+    font-size: 11pt;
+    color: #0a0a0a;
+  }
 </style>
 </head>
 <body>
 
 <div class="sender">
-  SENDER_NAME<br>
-  SENDER_STREET<br>
-  SENDER_CITY_STATE_ZIP<br>
-  SENDER_EMAIL<br>
-  SENDER_PHONE
+  <div class="sender-name">SENDER_NAME</div>
+  <div class="sender-detail">
+    SENDER_EMAIL<br>
+    SENDER_PHONE<br>
+    SENDER_LOCATION
+  </div>
 </div>
 
 <div class="date">LETTER_DATE</div>
 
 <div class="recipient">
-  RECIPIENT_NAME<br>
+  <span class="company">COMPANY_NAME</span><br>
   RECIPIENT_TITLE<br>
-  COMPANY_NAME<br>
-  COMPANY_STREET<br>
-  COMPANY_CITY_STATE_ZIP
+  RECIPIENT_NAME
 </div>
+
+<hr class="divider">
 
 <div class="salutation">Dear RECIPIENT_TITLE_AND_NAME,</div>
 
@@ -45,7 +114,7 @@
 </div>
 
 <div class="signoff">
-  Sincerely,<br>
+  <div class="signoff-phrase">Sincerely,</div>
   <div class="name">YOUR_NAME</div>
 </div>
 

@@ -20,7 +20,7 @@ export default function LiquidGlassCard() {
           className="text-accent text-[11px] md:text-[14px] font-medium tracking-widest uppercase mb-2"
           style={{ fontFamily: "Inter, sans-serif" }}
         >
-          [ 2025 ]
+          [ {new Date().getFullYear()} ]
         </span>
 
         {/* Headline */}

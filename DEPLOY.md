@@ -4,11 +4,11 @@
 ```
 Vercel (Frontend)  →  Railway (Backend)  →  NVIDIA NIM API
      React/Vite         Python/FastAPI         diffusiongemma
-                         + texlive/pdflatex
+                          + xhtml2pdf
 ```
 
 ## Why Not Vercel for Backend?
-Vercel serverless functions **cannot** run pdflatex — they have no system package manager, timeout at 60s, and are ephemeral. The backend needs a persistent server with texlive installed.
+Vercel serverless functions have tight timeout and memory limits that make AI-powered document generation unreliable.
 
 **Best combo**: Vercel (frontend) + Railway (backend)
 
@@ -86,26 +86,24 @@ Vercel serverless functions **cannot** run pdflatex — they have no system pack
 ```bash
 # Backend
 cd backend
+cp .env.example .env  # add your NVIDIA_NIM_API_KEY
 uv run python main.py  # http://localhost:8000
 
 # Frontend (new terminal)
+npm install
 npm run dev  # http://localhost:5173
 ```
 
-Set `VITE_API_URL=http://localhost:8000` in `.env` for local dev.
+Set `VITE_API_URL=http://localhost:8000` in a `.env` file in the project root for local dev.
 
 ---
 
 ## Troubleshooting
 
-### "pdflatex not found" on Railway
-The Dockerfile installs texlive. If it fails, check Railway build logs.
-
 ### CORS errors
-Backend CORS allows `*.vercel.app` and `*.up.railway.app`. If you deploy elsewhere, update `main.py` CORS origins.
+Backend CORS allows `localhost:5173`, `localhost:3000`, and deployment URLs. If you deploy elsewhere, update the `ALLOWED_ORIGINS` env var on the backend.
 
 ### Timeout errors
-- pdflatex: 300s timeout (first run downloads LaTeX packages)
 - NVIDIA NIM: 120s timeout (diffusiongemma with thinking enabled is slow)
 
 ### "Generation failed" on Vercel

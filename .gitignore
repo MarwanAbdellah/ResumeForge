@@ -29,6 +29,7 @@ __pycache__/
 *.pyo
 .venv/
 backend/.venv/
+backend/.env
 backend/output/
 backend/__pycache__/
 backend/tools/__pycache__/

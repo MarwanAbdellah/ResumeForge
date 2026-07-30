@@ -3,78 +3,212 @@
 <head>
 <meta charset="UTF-8">
 <style>
-  @page { size: A4; margin: 0.6in 0.6in 0.5in 0.6in; }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 10pt; line-height: 1.4; color: #1a1a1a; }
-  a { color: #1a1a1a; text-decoration: none; }
-
-  /* Contact */
-  .contact { text-align: center; margin-bottom: 12pt; }
-  .contact .name { font-size: 18pt; font-weight: 700; letter-spacing: 0.5pt; }
-  .contact .details { font-size: 9.5pt; color: #333; margin-top: 4pt; }
-  .contact .details .sep { margin: 0 6pt; color: #999; }
-
-  /* Sections */
-  .section { margin-bottom: 10pt; }
-  .section-title {
-    font-size: 11pt; font-weight: 700; text-transform: uppercase; letter-spacing: 1pt;
-    border-bottom: 1.5pt solid #1a1a1a; padding-bottom: 2pt; margin-bottom: 6pt;
+  @page {
+    size: A4;
+    margin: 0.45in 0.5in 0.4in 0.5in;
+  }
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 9.3pt;
+    line-height: 1.35;
+    color: #1a1a1a;
+    background: #ffffff;
+  }
+  a {
+    color: #1a1a1a;
+    text-decoration: underline;
+    word-break: break-all;
   }
 
-  /* Entry rows */
-  .entry { margin-bottom: 6pt; }
-  .entry-header { display: flex; justify-content: space-between; align-items: baseline; }
-  .entry-header .left { font-weight: 700; }
-  .entry-header .right { font-style: italic; color: #444; font-size: 9.5pt; }
-  .entry-sub { font-style: italic; color: #444; font-size: 9.5pt; margin-top: 1pt; }
-  .entry-desc { font-size: 9.5pt; margin-top: 2pt; }
+  /* ── HARSHIBAR CENTERED HEADER ─────────────────── */
+  .header {
+    text-align: center;
+    margin-bottom: 10pt;
+  }
+  .header .name {
+    font-size: 22pt;
+    font-weight: 700;
+    letter-spacing: 0.3pt;
+    color: #000000;
+    margin-bottom: 4pt;
+    text-transform: none;
+  }
+  .header .contact-line {
+    font-size: 8.8pt;
+    color: #222222;
+    line-height: 1.4;
+  }
+  .header .sep {
+    display: inline-block;
+    margin: 0 4pt;
+    color: #888888;
+  }
 
-  /* Bullet lists */
-  ul { margin: 2pt 0 0 1.5em; padding: 0; list-style: disc; }
-  li { font-size: 9.5pt; margin-bottom: 1.5pt; line-height: 1.35; }
+  /* ── SECTION HEADINGS ──────────────────────────── */
+  .section {
+    margin-bottom: 9pt;
+  }
+  .section-title {
+    font-size: 10.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6pt;
+    color: #000000;
+    border-bottom: 0.75pt solid #bbb;
+    padding-bottom: 2pt;
+    margin-bottom: 6pt;
+  }
 
-  /* Skills */
-  .skills-line { font-size: 9.5pt; margin-bottom: 2pt; }
-  .skills-line strong { font-weight: 700; }
+  /* ── ENTRY ROWS (2-COLUMN FLOATED LAYOUT) ──────── */
+  .entry {
+    margin-bottom: 7pt;
+    page-break-inside: avoid;
+  }
+  .row-primary {
+    width: 100%;
+    margin-bottom: 1pt;
+  }
+  .entry-left {
+    font-weight: 700;
+    font-size: 9.5pt;
+    color: #000000;
+    float: left;
+  }
+  .entry-right {
+    font-size: 8.8pt;
+    color: #333333;
+    float: right;
+    text-align: right;
+  }
+  .row-secondary {
+    width: 100%;
+    margin-top: 1pt;
+    margin-bottom: 3pt;
+  }
+  .sub-left {
+    font-style: italic;
+    color: #444444;
+    font-size: 8.8pt;
+    float: left;
+  }
+  .sub-right {
+    font-style: italic;
+    color: #444444;
+    font-size: 8.8pt;
+    float: right;
+    text-align: right;
+  }
+  .clear {
+    clear: both;
+    height: 0px;
+    font-size: 0px;
+    line-height: 0px;
+  }
+
+  .entry-link {
+    font-size: 8.5pt;
+    color: #444444;
+    margin-top: 1.5pt;
+    margin-bottom: 2pt;
+    word-break: break-all;
+  }
+
+  /* ── BULLET LISTS ───────────────────────────────── */
+  ul {
+    margin: 2pt 0 0 1.2em;
+    padding: 0;
+    list-style: disc;
+  }
+  li {
+    font-size: 9.2pt;
+    margin-bottom: 2pt;
+    line-height: 1.35;
+    color: #1a1a1a;
+  }
+  li strong {
+    font-weight: 700;
+    color: #000000;
+  }
+
+  /* ── SKILLS SECTION ─────────────────────────────── */
+  .skills-block {
+    margin-top: 2pt;
+  }
+  .skills-line {
+    font-size: 9.2pt;
+    margin-bottom: 3pt;
+    color: #1a1a1a;
+    line-height: 1.4;
+  }
+  .skills-line strong {
+    font-weight: 700;
+    color: #000000;
+  }
+
+  /* ── SUMMARY TEXT ───────────────────────────────── */
+  .summary-text {
+    font-size: 9.2pt;
+    color: #1a1a1a;
+    line-height: 1.4;
+    text-align: justify;
+  }
 </style>
 </head>
 <body>
 
-<!-- CONTACT -->
-<div class="contact">
+<!-- HARSHIBAR CENTERED HEADER -->
+<div class="header">
   <div class="name">YOUR_NAME</div>
-  <div class="details">
-    YOUR_PHONE<span class="sep">|</span><a href="mailto:YOUR_EMAIL">YOUR_EMAIL</a><span class="sep">|</span>YOUR_LOCATION
+  <div class="contact-line">
+    YOUR_PHONE<span class="sep">|</span><a href="mailto:YOUR_EMAIL">YOUR_EMAIL</a><span class="sep">|</span>YOUR_LOCATION<span class="sep">|</span><a href="LINKEDIN_URL">LinkedIn</a><span class="sep">|</span><a href="GITHUB_URL">GitHub</a><span class="sep">|</span><a href="KAGGLE_URL">Kaggle</a>
   </div>
+</div>
+
+<!-- SUMMARY -->
+<div class="section">
+  <div class="section-title">Summary</div>
+  <div class="summary-text">PROFESSIONAL_SUMMARY</div>
 </div>
 
 <!-- EXPERIENCE -->
 <div class="section">
   <div class="section-title">Experience</div>
   <div class="entry">
-    <div class="entry-header">
-      <span class="left">JOB_TITLE_1</span>
-      <span class="right">DATE_RANGE_1</span>
+    <div class="row-primary">
+      <span class="entry-left">COMPANY_NAME</span>
+      <span class="entry-right">DATE_RANGE_1</span>
+      <div class="clear"></div>
     </div>
-    <div class="entry-sub">COMPANY_1 — LOCATION_1</div>
+    <div class="row-secondary">
+      <span class="sub-left">JOB_TITLE_1</span>
+      <span class="sub-right">LOCATION_1</span>
+      <div class="clear"></div>
+    </div>
     <ul>
-      <li>ACHIEVEMENT_1 — quantified result or impact</li>
-      <li>ACHIEVEMENT_2 — quantified result or impact</li>
+      <li><strong>Quantified achievement:</strong> impact description with metrics and technical depth</li>
+      <li><strong>Responsibility highlight:</strong> system architecture and deployment details</li>
     </ul>
   </div>
 </div>
 
-<!-- PROJECTS -->
+<!-- PROJECTS / PRACTICAL EXPERIENCE -->
 <div class="section">
   <div class="section-title">Projects</div>
   <div class="entry">
-    <div class="entry-header">
-      <span class="left">PROJECT_NAME_1</span>
-      <span class="right">DATE_OR_TECH</span>
+    <div class="row-primary">
+      <span class="entry-left">PROJECT_NAME_1</span>
+      <span class="entry-right">DATE_OR_TECH</span>
+      <div class="clear"></div>
     </div>
-    <div class="entry-desc">Short description of the project.</div>
+    <div class="entry-link"><a href="PROJECT_URL">PROJECT_URL</a></div>
     <ul>
-      <li>Project highlight or result</li>
+      <li><strong>Project highlight:</strong> key engineering contribution, algorithm used, and measurable output</li>
+      <li><strong>Integration result:</strong> technology stack details and performance metrics</li>
     </ul>
   </div>
 </div>
@@ -83,20 +217,30 @@
 <div class="section">
   <div class="section-title">Education</div>
   <div class="entry">
-    <div class="entry-header">
-      <span class="left">SCHOOL_NAME</span>
-      <span class="right">DATE_RANGE_EDU</span>
+    <div class="row-primary">
+      <span class="entry-left">SCHOOL_NAME</span>
+      <span class="entry-right">DATE_RANGE_EDU</span>
+      <div class="clear"></div>
     </div>
-    <div class="entry-sub">DEGREE_AND_MAJOR</div>
-    <div class="entry-desc"><strong>Coursework:</strong> relevant courses</div>
+    <div class="row-secondary">
+      <span class="sub-left">DEGREE_AND_MAJOR</span>
+      <span class="sub-right">LOCATION_EDU</span>
+      <div class="clear"></div>
+    </div>
+    <ul>
+      <li><strong>Coursework:</strong> Machine Learning, Computer Vision, Data Structures, Algorithms</li>
+    </ul>
   </div>
 </div>
 
 <!-- SKILLS -->
 <div class="section">
   <div class="section-title">Skills</div>
-  <div class="skills-line"><strong>Languages:</strong> skill1, skill2, skill3</div>
-  <div class="skills-line"><strong>Tools:</strong> tool1, tool2, tool3</div>
+  <div class="skills-block">
+    <div class="skills-line"><strong>Programming Languages:</strong> Python, SQL, C++, Bash</div>
+    <div class="skills-line"><strong>Spoken Languages:</strong> Arabic (Native), English (Full Professional)</div>
+    <div class="skills-line"><strong>Tools &amp; Frameworks:</strong> PyTorch, TensorFlow, Scikit-learn, Docker, Tableau, Power BI, Git</div>
+  </div>
 </div>
 
 </body>
