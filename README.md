@@ -1,12 +1,12 @@
 # 🚀 ResumeForge — AI Agentic Resume & Portfolio Generator
 
 [![CrewAI](https://img.shields.io/badge/CrewAI-1.15.9-emerald.svg)](https://github.com/joaomdmoura/crewAI)
-[![Groq Llama 3.3 70B](https://img.shields.io/badge/Groq-Llama--3.3--70B--versatile-purple.svg)](https://groq.com)
+[![OpenRouter Nemotron 550B](https://img.shields.io/badge/OpenRouter-Nemotron--3--Ultra--550B-purple.svg)](https://openrouter.ai)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688.svg)](https://fastapi.tiangolo.com)
 [![React 18](https://img.shields.io/badge/React-18.0+-61DAFB.svg)](https://react.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**ResumeForge** is an advanced, production-grade AI application powered by a **7-Agent CrewAI Swarm**, **Groq `llama-3.3-70b-versatile` LPU engine**, and **SerperDev web search**. It dynamically analyzes any Job Description, extracts public candidate portfolio repositories, executes a pre-generation **Agentic Candidate Qualification Interview**, and compiles 100% ATS-optimized single-column PDF resumes and tailored cover letters.
+**ResumeForge** is an advanced, production-grade AI application powered by a **7-Agent CrewAI Swarm**, **OpenRouter `nvidia/nemotron-3-ultra-550b-a55b:free` LLM engine**, and **SerperDev web search**. It dynamically analyzes any Job Description, extracts public candidate portfolio repositories, executes a pre-generation **Agentic Candidate Qualification Interview**, and compiles 100% ATS-optimized single-column PDF resumes and tailored cover letters.
 
 ---
 

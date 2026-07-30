@@ -37,14 +37,14 @@ def _patched_litellm_completion(*args, **kwargs):
 
 litellm.completion = _patched_litellm_completion
 
-# ── LLM setup (Groq Llama-3.3-70b-versatile) ─────────────────
-groq_api_key = os.getenv("GROQ_API_KEY")
-if groq_api_key:
-    os.environ["GROQ_API_KEY"] = groq_api_key
+# ── LLM setup (OpenRouter Nemotron 550B Ultra) ────────────────
+openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+if openrouter_api_key:
+    os.environ["OPENROUTER_API_KEY"] = openrouter_api_key
 
 llm = LLM(
-    model="groq/llama-3.3-70b-versatile",
-    api_key=groq_api_key,
+    model="openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+    api_key=openrouter_api_key,
     temperature=0.2,
     max_tokens=4096,
 )
