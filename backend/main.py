@@ -289,6 +289,8 @@ async def ats_gap_inquire(payload: GapInquireRequest):
         return JSONResponse(content=report)
     except HTTPException:
         raise
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -316,6 +318,8 @@ async def generate(payload: GenerateRequest):
         })
     except HTTPException:
         raise
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         import traceback
         traceback.print_exc()

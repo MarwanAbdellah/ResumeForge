@@ -974,14 +974,26 @@ def run_structuring(raw_text: str, notes: str = "", enriched_profile: dict | Non
 
 def run_jd_analysis(job_description: str) -> dict:
     """Agent 3: Analyze job description and extract structured insights."""
-    return _run_agent_task_with_json(
+    jd_clean = (job_description or "").strip()
+    if len(jd_clean) < 20:
+        raise ValueError("Invalid Job Description: The provided text is too short or empty. Please enter a valid job description.")
+
+    words = [w for w in re.split(r'\s+', jd_clean) if len(w) > 2]
+    if len(words) < 4:
+        raise ValueError("Invalid Job Description: The provided text does not contain enough words to be a job description.")
+
+    res = _run_agent_task_with_json(
         jd_analysis_agent,
         description=(
-            "Analyze the following job description and extract structured data "
-            "for resume optimization.\n\n"
-            f"JOB DESCRIPTION:\n{job_description}\n\n"
+            "Analyze the following text and determine if it is a valid Job Description.\n\n"
+            f"INPUT TEXT:\n{job_description}\n\n"
+            "VALIDATION RULE:\n"
+            "Set 'is_valid_jd' to true if the input text describes a job role, job title, responsibilities, "
+            "or required qualifications. Set 'is_valid_jd' to false if the input text is random gibberish, "
+            "unrelated content, a grocery list, code snippet, or NOT a job description.\n\n"
             "Output ONLY valid JSON with ALL of these fields:\n"
             '{\n'
+            '  "is_valid_jd": true,\n'
             '  "required_skills": ["skill1", "skill2"],\n'
             '  "preferred_skills": ["skill1", "skill2"],\n'
             '  "ats_keywords": ["keyword1", "keyword2"],\n'
@@ -997,12 +1009,17 @@ def run_jd_analysis(job_description: str) -> dict:
             '    "section_order_suggestion": ["section1", "section2"]\n'
             '  }\n'
             '}\n'
-            "IMPORTANT: Include ALL top-level fields. Do not output only a subset."
+            "IMPORTANT: Include ALL top-level fields."
         ),
-        expected_output="A valid JSON object with job description analysis.",
+        expected_output="A valid JSON object with job description analysis and is_valid_jd boolean flag.",
         label="JD Analysis",
         required_keys=["required_skills", "preferred_skills", "ats_keywords", "resume_strategy"],
     )
+
+    if res.get("is_valid_jd") is False:
+        raise ValueError("Invalid Job Description: The provided text does not appear to be a real job description. Please provide a valid job description with role details or requirements.")
+
+    return res
 
 
 def run_cv_generation(enriched_data: dict, jd_analysis: dict, notes: str = "") -> str:
