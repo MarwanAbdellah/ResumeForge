@@ -25,6 +25,9 @@ litellm.modify_params = True
 _original_litellm_completion = litellm.completion
 
 def _patched_litellm_completion(*args, **kwargs):
+    if "tools" in kwargs and not kwargs["tools"]:
+        kwargs.pop("tools", None)
+        kwargs.pop("tool_choice", None)
     if "messages" in kwargs and isinstance(kwargs["messages"], list):
         for msg in kwargs["messages"]:
             if isinstance(msg, dict):
@@ -67,8 +70,14 @@ def _get_crew_output(result) -> str:
 
 
 def _extract_json(raw: str) -> dict:
-    """Parse JSON from LLM output, stripping markdown fences. Resilient to truncation."""
+    """Parse JSON from LLM output, stripping markdown fences and function tags. Resilient to truncation."""
     json_str = raw.strip()
+
+    # Strip function tags e.g. <function=...>{"key": "val"}</function>
+    if "<function=" in json_str:
+        match = re.search(r"<function=[^>]*>(.*?)(?:</function>|$)", json_str, re.DOTALL)
+        if match:
+            json_str = match.group(1).strip()
 
     # Strip markdown code fences
     if "```" in json_str:
@@ -691,9 +700,19 @@ def _run_agent_task(agent, description, expected_output, label="agent"):
     crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=True, tracing=True)
     try:
         result = crew.kickoff()
+        raw = _get_crew_output(result)
     except Exception as e:
-        raise RuntimeError(f"{label} crew failed: {e}")
-    raw = _get_crew_output(result)
+        err_msg = str(e)
+        if "failed_generation" in err_msg or "<function=" in err_msg or "tool_use_failed" in err_msg:
+            match = re.search(r'\{.*\}', err_msg, re.DOTALL)
+            if match:
+                raw = match.group(0)
+                raw = raw.replace('\\"', '"').replace('\\\\', '\\')
+            else:
+                raise RuntimeError(f"{label} crew failed: {e}")
+        else:
+            raise RuntimeError(f"{label} crew failed: {e}")
+
     if not raw:
         raise RuntimeError(f"{label} returned empty output")
     return raw
