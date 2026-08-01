@@ -1,4 +1,9 @@
-const API_URL = import.meta.env.VITE_API_URL || (typeof window !== "undefined" ? `${window.location.protocol}//${window.location.hostname}:8000` : "http://localhost:8000");
+const localHost = typeof window !== "undefined" && window.location.hostname === "localhost"
+  ? "127.0.0.1"
+  : typeof window !== "undefined"
+  ? window.location.hostname
+  : "127.0.0.1";
+const API_URL = import.meta.env.VITE_API_URL || `${typeof window !== "undefined" ? window.location.protocol : "http:"}//${localHost}:8000`;
 
 export async function extractFile(file) {
   const formData = new FormData();

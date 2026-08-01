@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   Upload,
   FileText,
@@ -9,7 +9,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 
-import { extractFile, cleanExtractedText, generateDocuments, inquireAtsGap } from "../api/client";
+import { extractFile, cleanExtractedText, generateDocuments } from "../api/client";
 import FileUpload from "./FileUpload";
 import ManualForm from "./ManualForm";
 import ProgressTracker from "./ProgressTracker";
@@ -47,19 +47,28 @@ export default function ResumeCreator() {
   const [jobDescription, setJobDescription] = useState("");
   const [notes, setNotes] = useState("");
   const [uploadPortfolioLinks, setUploadPortfolioLinks] = useState([]);
+  const [enrichmentData, setEnrichmentData] = useState([]);
+  const extractionInFlight = useRef(false);
 
   // Pre-generation Agentic AI Candidate Interview states
-  const [preGenInquiry, setPreGenInquiry] = useState(null);
+  const [preGenInquiry, _setPreGenInquiry] = useState(null);
   const [showPreGenInterview, setShowPreGenInterview] = useState(false);
-  const [candidateInterviewAnswer, setCandidateInterviewAnswer] = useState("");
-  const [pendingCleanedData, setPendingCleanedData] = useState(null);
+  const [pendingCleanedData, _setPendingCleanedData] = useState(null);
   const [questionResponses, setQuestionResponses] = useState({});
+  const [askSpokenLanguages, _setAskSpokenLanguages] = useState(false);
+  const [spokenLanguages, setSpokenLanguages] = useState([{ language: "", proficiency: "" }]);
 
   const handleResponseChange = (kw, field, value) => {
     setQuestionResponses((prev) => ({
       ...prev,
       [kw]: { ...(prev[kw] || { level: "no_exp", detail: "" }), [field]: value },
     }));
+  };
+
+  const handleSpokenLanguageChange = (index, field, value) => {
+    setSpokenLanguages((prev) => prev.map((entry, entryIndex) => (
+      entryIndex === index ? { ...entry, [field]: value } : entry
+    )));
   };
 
   const handleFileDrop = useCallback((file) => {
@@ -82,6 +91,8 @@ export default function ResumeCreator() {
   };
 
   const startExtraction = async (file) => {
+    if (extractionInFlight.current) return;
+    extractionInFlight.current = true;
     setIsExtracting(true);
     setGenerationComplete(false);
     try {
@@ -98,6 +109,7 @@ export default function ResumeCreator() {
     } catch (err) {
       setExtractedText(`[Extraction error: ${err.message}]`);
     } finally {
+      extractionInFlight.current = false;
       setIsExtracting(false);
     }
   };
@@ -109,6 +121,7 @@ export default function ResumeCreator() {
     setCvPdfPath(null);
     setClPdfPath(null);
     setAtsReport(null);
+    setEnrichmentData([]);
     setCurrentStep(null);
     setCompletedSteps([]);
     setStepError(null);
@@ -177,10 +190,8 @@ export default function ResumeCreator() {
     setAtsReport(null);
     setStepError(null);
     setCompletedSteps([]);
-    setShowPreGenInterview(false);
-    setPreGenInquiry(null);
 
-    try {
+      try {
       let cleaned;
 
       if (activeMethod === "manual") {
@@ -201,24 +212,12 @@ export default function ResumeCreator() {
         setCurrentStep("structure");
         const cleanData = await cleanExtractedText(text, uploadPortfolioLinks);
         cleaned = cleanData.cleaned_data;
+        setEnrichmentData(cleanData.enrichment_data || []);
         setCompletedSteps((prev) => [...prev, "structure"]);
       }
 
-      setCurrentStep("analyze");
-      setPendingCleanedData(cleaned);
-
-      // Perform Agentic Pre-Generation Interview Check against target JD
-      let gapData = { inquiry_questions: [], missing_keywords: [] };
-      try {
-        gapData = await inquireAtsGap(jobDescription, cleaned, "");
-      } catch (e) {
-        console.warn("Pre-generation gap inquiry check error:", e);
-      }
-
-      setPreGenInquiry(gapData);
-      setShowPreGenInterview(true);
-      // Pause at analyze step for candidate interactive interview
-      return;
+      // Skip the optional pre-generation ATS gap analysis to reduce latency.
+      await continueDocumentGeneration(cleaned, notes);
     } catch (err) {
       console.error("Generation error:", err);
       setStepError(err.message);
@@ -236,9 +235,8 @@ export default function ResumeCreator() {
         activeMethod === "upload" ? uploadPortfolioLinks : (manualData.portfolioLinks || []);
       const genData = await generateDocuments(cleaned, jobDescription, outputType, currentNotes, portfolioLinks);
       setCompletedSteps((prev) => [...prev, "generate"]);
-      setCurrentStep("review");
-      setCompletedSteps((prev) => [...prev, "review"]);
       setCurrentStep("compile");
+      if (genData.enrichment_data) setEnrichmentData(genData.enrichment_data);
       if (genData.cv_pdf) setCvPdfPath(genData.cv_pdf);
       if (genData.cover_letter_pdf) setClPdfPath(genData.cover_letter_pdf);
       if (genData.ats_report) setAtsReport(genData.ats_report);
@@ -253,6 +251,7 @@ export default function ResumeCreator() {
   };
 
   const isGenerating = currentStep !== null;
+  const showProgress = isGenerating || Boolean(stepError);
 
   const canGenerate =
     activeMethod === "upload"
@@ -267,6 +266,10 @@ export default function ResumeCreator() {
       : outputType === "cover_letter"
       ? "Cover Letter"
       : "Resume & Cover Letter";
+
+  const missingSkillQuestions = (preGenInquiry?.inquiry_questions || []).length > 0
+    ? preGenInquiry.inquiry_questions
+    : (preGenInquiry?.missing_keywords || []).map((keyword) => ({ keyword }));
 
   return (
     <>
@@ -372,35 +375,31 @@ export default function ResumeCreator() {
       </div>
 
       {/* Progress Tracker */}
-      {isGenerating && (
+      {showProgress && (
         <ProgressTracker
           currentStep={currentStep}
           completedSteps={completedSteps}
           error={stepError}
           portfolioLinks={activeMethod === "upload" ? uploadPortfolioLinks : (manualData.portfolioLinks ? [manualData.portfolioLinks] : [])}
+          enrichmentData={enrichmentData}
         />
       )}
 
-      {/* PRE-GENERATION AGENTIC AI CANDIDATE INTERVIEW CARD */}
+      {/* Missing skills questionnaire */}
       {showPreGenInterview && preGenInquiry && (
         <div className="max-w-2xl mx-auto my-8 p-6 bg-accent/[0.05] border border-accent/30 rounded-2xl space-y-5 shadow-xl animate-in fade-in slide-in-from-top-4">
           <div className="flex items-center gap-2">
-            <Sparkles size={18} className="text-accent shrink-0" />
-            <h3 className="text-sm font-bold text-white tracking-wide">
-              Agentic Candidate Qualification Interview
-            </h3>
-            <span className="text-[10px] font-mono text-accent bg-accent/10 px-2 py-0.5 rounded-full ml-auto">
-              Agent 3 Pre-Gen Calibration
-            </span>
+            <Briefcase size={18} className="text-accent shrink-0" />
+            <h3 className="text-sm font-bold text-white tracking-wide">Missing Skills Review</h3>
           </div>
           <p className="text-white/60 text-xs leading-relaxed">
-            Our AI Job Analyst matched the requirements of this job description against your candidate profile. To maximize your ATS score, please clarify your experience level with the following key skills:
+            The following skills were not found in your profile. Select the option that best describes your background and add a project link or explanation when applicable.
           </p>
 
-          {/* DYNAMIC PER-KEYWORD QUESTION BLOCKS */}
-          {preGenInquiry.inquiry_questions && preGenInquiry.inquiry_questions.length > 0 ? (
+          {/* Missing skill rows */}
+          {missingSkillQuestions.length > 0 ? (
             <div className="space-y-4 pt-1">
-              {preGenInquiry.inquiry_questions.map((qObj, idx) => {
+              {missingSkillQuestions.map((qObj, idx) => {
                 const kw = qObj.keyword;
                 const questionText = qObj.question || `What is your experience level with ${kw}?`;
                 const currentResp = questionResponses[kw] || { level: "no_exp", detail: "" };
@@ -409,15 +408,18 @@ export default function ResumeCreator() {
                   <div key={idx} className="p-4 bg-white/[0.02] border border-white/[0.06] rounded-xl space-y-3">
                     <div className="flex items-start gap-2">
                       <span className="text-accent font-mono text-xs font-bold shrink-0">{idx + 1}.</span>
-                      <p className="text-white/90 text-xs font-medium leading-relaxed">{questionText}</p>
+                      <div>
+                        <p className="text-white/95 text-sm font-semibold leading-relaxed">{kw}</p>
+                        <p className="text-white/45 text-[11px] leading-relaxed mt-1">{questionText}</p>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-4">
                       {[
-                        { id: "no_exp", label: "No Experience" },
-                        { id: "practical", label: "Hands-on Practical Experience" },
-                        { id: "basic", label: "Basic / Working Knowledge" },
-                        { id: "academic", label: "Academic / Coursework Only" },
+                        { id: "practical", label: "I have experience" },
+                        { id: "no_exp", label: "No experience" },
+                        { id: "basic", label: "Knowledge, no completed project" },
+                        { id: "essential_learning", label: "Essential learning" },
                       ].map((opt) => (
                         <label
                           key={opt.id}
@@ -444,26 +446,18 @@ export default function ResumeCreator() {
                       ))}
                     </div>
 
-                    {/* PROJECT / LINK / DETAIL INPUT (Conditioned on selecting any experience option) */}
+                    {/* Optional evidence or context */}
                     <div className="pl-4 pt-1">
-                      {currentResp.level !== "no_exp" ? (
-                        <div className="space-y-1.5">
-                          <label className="text-[11px] text-accent/80 font-medium flex items-center gap-1.5">
-                            <Sparkles size={12} /> Add project link, repository, or specific details for {kw}:
-                          </label>
-                          <input
-                            type="text"
-                            value={currentResp.detail || ""}
-                            onChange={(e) => handleResponseChange(kw, "detail", e.target.value)}
-                            placeholder={`e.g. 'Built ${kw} pipeline at GitHub repo / project name'`}
-                            className="w-full bg-white/[0.04] border border-accent/20 rounded-lg px-3 py-2 text-white text-xs placeholder:text-white/20 focus:outline-none focus:border-accent/50"
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex items-center text-white/30 text-[11px] italic px-1 pt-4">
-                          Select experience level to enable project link/details field.
-                        </div>
-                      )}
+                      <label className="text-[11px] text-accent/80 font-medium block mb-1.5">
+                        Project link or description (optional)
+                      </label>
+                      <textarea
+                        value={currentResp.detail || ""}
+                        onChange={(e) => handleResponseChange(kw, "detail", e.target.value)}
+                        placeholder={`e.g. GitHub link, project name, coursework, or how you learned ${kw}`}
+                        rows={2}
+                        className="w-full bg-white/[0.04] border border-accent/20 rounded-lg px-3 py-2 text-white text-xs placeholder:text-white/20 focus:outline-none focus:border-accent/50 resize-none"
+                      />
                     </div>
                   </div>
                 );
@@ -472,23 +466,53 @@ export default function ResumeCreator() {
           ) : (
             <div className="p-4 bg-white/[0.02] border border-white/[0.06] rounded-xl">
               <p className="text-white/90 text-xs font-semibold">
-                📌 High Candidate Match Detected! Do you have any additional unlisted projects, certifications, or custom domain notes you want emphasized?
+                No missing skills were detected. You can continue with your current profile.
               </p>
             </div>
           )}
 
-          {/* ADDITIONAL GENERAL NOTES */}
-          <div className="space-y-2 pt-1">
-            <label className="text-white/70 text-xs font-medium">
-              Additional Unlisted Notes / Certifications (Optional):
-            </label>
-            <textarea
-              value={candidateInterviewAnswer}
-              onChange={(e) => setCandidateInterviewAnswer(e.target.value)}
-              placeholder="e.g. 'I also earned an AWS Certified Solutions Architect badge recently.'"
-              className="w-full h-20 bg-white/[0.03] border border-white/[0.1] rounded-xl p-3 text-white text-xs placeholder:text-white/20 focus:outline-none focus:border-accent/40 resize-none"
-            />
-          </div>
+          {askSpokenLanguages && (
+            <div className="p-4 bg-white/[0.02] border border-white/[0.06] rounded-xl space-y-3">
+              <div>
+                <p className="text-white/95 text-sm font-semibold">Spoken languages</p>
+                <p className="text-white/45 text-[11px] leading-relaxed mt-1">
+                  No spoken languages were found in your profile. Add each language and your proficiency level.
+                </p>
+              </div>
+
+              {spokenLanguages.map((entry, index) => (
+                <div key={index} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr] gap-2">
+                  <input
+                    type="text"
+                    value={entry.language}
+                    onChange={(e) => handleSpokenLanguageChange(index, "language", e.target.value)}
+                    placeholder="Language spoken"
+                    className="w-full bg-white/[0.04] border border-accent/20 rounded-lg px-3 py-2 text-white text-xs placeholder:text-white/20 focus:outline-none focus:border-accent/50"
+                  />
+                  <select
+                    value={entry.proficiency}
+                    onChange={(e) => handleSpokenLanguageChange(index, "proficiency", e.target.value)}
+                    className="w-full bg-white/[0.04] border border-accent/20 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-accent/50"
+                  >
+                    <option value="" className="bg-dark-bg">Select proficiency</option>
+                    <option value="Native" className="bg-dark-bg">Native</option>
+                    <option value="Fluent" className="bg-dark-bg">Fluent</option>
+                    <option value="Professional working proficiency" className="bg-dark-bg">Professional working</option>
+                    <option value="Conversational" className="bg-dark-bg">Conversational</option>
+                    <option value="Basic" className="bg-dark-bg">Basic</option>
+                  </select>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setSpokenLanguages((prev) => [...prev, { language: "", proficiency: "" }])}
+                className="text-accent text-xs font-semibold hover:text-accent/80 transition-colors"
+              >
+                + Add another language
+              </button>
+            </div>
+          )}
 
           <div className="flex flex-wrap justify-end gap-3 pt-2">
             <button
@@ -497,16 +521,16 @@ export default function ResumeCreator() {
               }}
               className="px-5 py-2.5 bg-white/[0.05] border border-white/[0.1] text-white/70 font-semibold text-xs rounded-xl hover:bg-white/[0.08] hover:text-white transition-all cursor-pointer"
             >
-              Proceed With Current Profile
+              Continue Without Changes
             </button>
             <button
               onClick={() => {
                 // Collate all dropdown answers & project details
                 const levelLabels = {
-                  no_exp: "No Experience",
-                  practical: "Hands-on Practical Experience",
-                  basic: "Basic / Working Knowledge",
-                  academic: "Academic / Coursework Only",
+                  practical: "I have experience",
+                  no_exp: "No experience",
+                  basic: "Knowledge without a completed project",
+                  essential_learning: "Essential learning",
                 };
 
                 const formattedAnswers = Object.entries(questionResponses)
@@ -517,7 +541,12 @@ export default function ResumeCreator() {
                   })
                   .join("\n");
 
-                const combinedNotes = [notes, formattedAnswers, candidateInterviewAnswer.trim()]
+                const spokenLanguageNotes = spokenLanguages
+                  .filter((entry) => entry.language.trim())
+                  .map((entry) => `[Spoken Language]: ${entry.language.trim()}${entry.proficiency ? ` | Proficiency: ${entry.proficiency}` : ""}`)
+                  .join("\n");
+
+                const combinedNotes = [notes, formattedAnswers, spokenLanguageNotes]
                   .filter(Boolean)
                   .join("\n\n");
 
@@ -526,7 +555,7 @@ export default function ResumeCreator() {
               }}
               className="px-6 py-2.5 bg-accent text-dark-bg font-bold text-xs rounded-xl hover:bg-accent/90 transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-accent/10"
             >
-              <Sparkles size={14} /> Save Answers &amp; Generate Tailored Resume <ArrowRight size={14} />
+              <Sparkles size={14} /> Use Answers &amp; Continue <ArrowRight size={14} />
             </button>
           </div>
         </div>

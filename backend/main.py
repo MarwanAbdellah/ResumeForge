@@ -15,8 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from crew import run_extraction, run_generation_only, run_jd_analysis, run_ats_checker_crew, run_structuring
-from tools.link_fetcher import fetch_portfolio_links
+from crew import run_extraction, run_generation_only, run_jd_analysis, run_ats_checker_crew, run_structuring, verify_latex_compiler
 
 app = FastAPI(title="ResumeForge API", version="1.0.0")
 
@@ -61,7 +60,11 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 # ── Health check ──────────────────────────────────────────
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    try:
+        latex_compiler = verify_latex_compiler()
+        return {"status": "ok", "latex_compiler": latex_compiler}
+    except Exception as e:
+        return {"status": "degraded", "latex_error": str(e)}
 
 
 from tools.extractors import extract_urls
@@ -89,33 +92,22 @@ async def extract(file: UploadFile = File(...)):
 # ── Step 2: Clean + Enrich extracted text ────────────────
 @app.post("/api/clean")
 async def clean(payload: CleanRequest):
-    """
-    Structures raw CV text into JSON. If portfolio_links are provided,
-    fetches live GitHub API data and passes it to the structuring agent
-    for automatic project enrichment.
+    """Structures raw CV text into JSON.
+
+    Portfolio enrichment is intentionally deferred until generation, after
+    the job description has been analyzed and can drive repository ranking.
     """
     try:
         if not payload.extracted_text.strip():
             raise HTTPException(status_code=400, detail="No extracted_text provided")
 
-        # Fetch enriched profile data from GitHub API if links provided
-        enriched_profile = None
-        if payload.portfolio_links:
-            profiles = await asyncio.to_thread(fetch_portfolio_links, payload.portfolio_links)
-            # Find the first GitHub profile result (richest data source)
-            github_profiles = [p for p in profiles if p.get("platform") == "github" and p.get("github_user_info")]
-            if github_profiles:
-                enriched_profile = github_profiles[0]
-            elif profiles:
-                enriched_profile = profiles[0]  # Fall back to first enriched profile
-
         cleaned = await asyncio.to_thread(
             run_structuring,
             payload.extracted_text,
             "",            # notes (none at clean stage)
-            enriched_profile,
+            None,
         )
-        return JSONResponse(content={"cleaned_data": cleaned})
+        return JSONResponse(content={"cleaned_data": cleaned, "enrichment_data": []})
     except HTTPException:
         raise
     except Exception as e:
@@ -306,6 +298,8 @@ async def generate(payload: GenerateRequest):
         if not payload.job_description.strip():
             raise HTTPException(status_code=400, detail="No job_description provided")
 
+        # Fail fast before spending time on LLM calls if LaTeX is unavailable.
+        await asyncio.to_thread(verify_latex_compiler)
         result = await asyncio.to_thread(
             run_generation_only, payload.cleaned_data, payload.job_description, payload.output_type, payload.notes, payload.portfolio_links
         )
@@ -314,6 +308,7 @@ async def generate(payload: GenerateRequest):
             "cover_letter_pdf": result.get("cover_letter_pdf"),
             "cleaned_data": result.get("cleaned_data"),
             "ats_report": result.get("ats_report"),
+            "enrichment_data": result.get("enrichment_data", []),
         })
     except HTTPException:
         raise
@@ -360,4 +355,6 @@ async def download(filename: str):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    host = os.getenv("HOST", "127.0.0.1")
+    reload_enabled = os.getenv("RELOAD", "false").lower() in {"1", "true", "yes"}
+    uvicorn.run("main:app", host=host, port=port, reload=reload_enabled)

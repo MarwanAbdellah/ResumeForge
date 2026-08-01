@@ -5,6 +5,8 @@ os.environ["OTEL_SDK_DISABLED"] = "true"
 import json
 import re
 import logging
+import time
+from threading import Lock
 from datetime import date
 from pathlib import Path
 
@@ -14,6 +16,7 @@ from tools.extractors import extract_text
 from tools.link_fetcher import fetch_portfolio_links, search_serper_web
 
 logger = logging.getLogger(__name__)
+_AGENT_EXECUTION_LOCK = Lock()
 
 import litellm
 litellm.drop_params = True
@@ -36,14 +39,14 @@ def _patched_litellm_completion(*args, **kwargs):
 
 litellm.completion = _patched_litellm_completion
 
-# ── LLM setup (OpenRouter Nemotron 550B Ultra) ────────────────
-openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
-if openrouter_api_key:
-    os.environ["OPENROUTER_API_KEY"] = openrouter_api_key
+# ── LLM setup (NVIDIA NIM Nemotron 3 Ultra) ───────────────────
+nvidia_nim_api_key = os.getenv("NVIDIA_NIM_API_KEY")
+if nvidia_nim_api_key:
+    os.environ["NVIDIA_NIM_API_KEY"] = nvidia_nim_api_key
 
 llm = LLM(
-    model="openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
-    api_key=openrouter_api_key,
+    model="nvidia_nim/nvidia/nemotron-3-ultra-550b-a55b",
+    api_key=nvidia_nim_api_key,
     temperature=0.2,
     max_tokens=4096,
 )
@@ -691,16 +694,26 @@ def _normalize_phone_numbers(html: str) -> str:
 
 def _run_agent_task(agent, description, expected_output, label="agent"):
     """Run a single agent task via CrewAI and return raw output."""
+    started_at = time.perf_counter()
+    logger.info("[CrewAI][%s] queued", label)
     task = Task(
         description=description,
         expected_output=expected_output,
         agent=agent,
     )
-    crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=True)
+    crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=False)
     try:
-        result = crew.kickoff()
+        # CrewAI agents retain an executor, so concurrent requests cannot safely
+        # invoke the same module-level agent instance at the same time.
+        with _AGENT_EXECUTION_LOCK:
+            logger.info("[CrewAI][%s] running", label)
+            result = crew.kickoff()
         raw = _get_crew_output(result)
+        elapsed = time.perf_counter() - started_at
+        logger.info("[CrewAI][%s] completed in %.1fs (%d output chars)", label, elapsed, len(raw or ""))
     except Exception as e:
+        elapsed = time.perf_counter() - started_at
+        logger.warning("[CrewAI][%s] failed after %.1fs: %s", label, elapsed, e)
         err_msg = str(e)
         if "failed_generation" in err_msg or "<function=" in err_msg or "tool_use_failed" in err_msg:
             match = re.search(r'\{.*\}', err_msg, re.DOTALL)
@@ -771,7 +784,7 @@ structuring_agent = Agent(
     ),
     tools=[serper_web_search],
     llm=llm,
-    verbose=True,
+    verbose=False,
     allow_delegation=False,
 )
 
@@ -790,7 +803,7 @@ jd_analysis_agent = Agent(
     ),
     tools=[serper_web_search],
     llm=llm,
-    verbose=True,
+    verbose=False,
     allow_delegation=False,
 )
 
@@ -810,7 +823,7 @@ cv_generator_agent = Agent(
     ),
     tools=[serper_web_search],
     llm=llm,
-    verbose=True,
+    verbose=False,
     allow_delegation=False,
 )
 
@@ -831,7 +844,7 @@ review_polish_agent = Agent(
         "suggestions."
     ),
     llm=llm,
-    verbose=True,
+    verbose=False,
     allow_delegation=False,
 )
 
@@ -852,7 +865,7 @@ cover_letter_agent = Agent(
         "natural language. You never fabricate experience or skills."
     ),
     llm=llm,
-    verbose=True,
+    verbose=False,
     allow_delegation=False,
 )
 
@@ -878,7 +891,7 @@ ats_auditor_agent = Agent(
         "improve their resume for this specific role."
     ),
     llm=llm,
-    verbose=True,
+    verbose=False,
     allow_delegation=False,
 )
 
@@ -889,17 +902,25 @@ ats_auditor_agent = Agent(
 
 def run_extraction(file_bytes: bytes, filename: str) -> str:
     """Agent 1: Extract text from uploaded file (tool-based, no LLM)."""
-    return extract_text(file_bytes, filename)
+    started_at = time.perf_counter()
+    logger.info("[Agent 1][Extraction] started: %s", filename)
+    text = extract_text(file_bytes, filename)
+    logger.info("[Agent 1][Extraction] completed in %.1fs", time.perf_counter() - started_at)
+    return text
 
 
 def run_portfolio_fetch(urls: list[str]) -> list[dict]:
     """Fetch portfolio links and return structured project summaries (no LLM)."""
     if not urls:
         return []
-    return fetch_portfolio_links(urls)
+    started_at = time.perf_counter()
+    logger.info("[Enrichment] started for %d source(s)", len(urls))
+    profiles = fetch_portfolio_links(urls)
+    logger.info("[Enrichment] completed in %.1fs with %d source(s)", time.perf_counter() - started_at, len(profiles))
+    return profiles
 
 
-def run_structuring(raw_text: str, notes: str = "", enriched_profile: dict | None = None) -> dict:
+def run_structuring(raw_text: str, notes: str = "", enriched_profile: dict | list[dict] | None = None) -> dict:
     """Agent 2: Structure raw text into normalized JSON, merging user notes and live enriched profile data."""
     notes_section = ""
     if notes.strip():
@@ -908,38 +929,48 @@ def run_structuring(raw_text: str, notes: str = "", enriched_profile: dict | Non
             f"{notes.strip()}\n\n"
         )
 
-    # Build enrichment context from GitHub API data
+    # Build enrichment context from every submitted profile/source.
     enrichment_section = ""
     if enriched_profile:
+        profiles = enriched_profile if isinstance(enriched_profile, list) else [enriched_profile]
         parts = []
-        if enriched_profile.get("github_user_info"):
-            info = enriched_profile["github_user_info"]
-            parts.append(f"GitHub Profile: {enriched_profile.get('github_username', '')}")
-            if info.get("bio"):
-                parts.append(f"Bio: {info['bio']}")
-            if info.get("public_repos"):
-                parts.append(f"Public Repos: {info['public_repos']}")
-        if enriched_profile.get("all_languages"):
-            parts.append(f"Languages used on GitHub: {', '.join(enriched_profile['all_languages'])}")
-        if enriched_profile.get("all_topics"):
-            parts.append(f"Project topics/tags: {', '.join(enriched_profile['all_topics'][:15])}")
-        repos = enriched_profile.get("repos", [])
-        if repos:
-            parts.append("\nTop GitHub Repositories (verified, public):")
-            for r in repos[:8]:
-                repo_line = f"  - {r['name']} ({r.get('language', 'N/A')}): {r.get('description', '')} [⭐ {r.get('stars', 0)}]"
-                if r.get("topics"):
-                    repo_line += f" | Topics: {', '.join(r['topics'][:5])}"
-                if r.get("readme_excerpt"):
-                    repo_line += f"\n    README: {r['readme_excerpt'][:300]}"
-                parts.append(repo_line)
+        for profile in profiles:
+            platform = profile.get("platform", "website")
+            source_url = profile.get("url", "")
+            title = profile.get("title", "")
+            description = profile.get("description", "")
+            parts.append(f"Source: {platform} | URL: {source_url} | Title: {title}")
+            if description:
+                parts.append(f"Description: {description}")
+
+            if profile.get("github_user_info"):
+                info = profile["github_user_info"]
+                parts.append(f"GitHub Profile: {profile.get('github_username', '')}")
+                if info.get("bio"):
+                    parts.append(f"Bio: {info['bio']}")
+                if info.get("public_repos"):
+                    parts.append(f"Public Repos: {info['public_repos']}")
+            if profile.get("all_languages"):
+                parts.append(f"Languages used on GitHub: {', '.join(profile['all_languages'])}")
+            if profile.get("all_topics"):
+                parts.append(f"Project topics/tags: {', '.join(profile['all_topics'][:15])}")
+
+            repos = profile.get("repos", [])
+            if repos:
+                parts.append("\nVerified public repositories:")
+                for r in repos[:8]:
+                    repo_line = f"  - {r['name']} ({r.get('language', 'N/A')}): {r.get('description', '')} [stars: {r.get('stars', 0)}]"
+                    if r.get("topics"):
+                        repo_line += f" | Topics: {', '.join(r['topics'][:5])}"
+                    if r.get("readme_excerpt"):
+                        repo_line += f"\n    README: {r['readme_excerpt'][:300]}"
+                    parts.append(repo_line)
         enrichment_section = (
-            "\nLIVE PROFILE ENRICHMENT DATA (from GitHub API — verified, use this to enrich projects section):\n"
+            "\nLIVE PROFILE ENRICHMENT DATA (all submitted sources — use only verified data):\n"
             + "\n".join(parts)
             + "\n"
-            "IMPORTANT: You may use the above GitHub data to add or enrich the 'projects' array with real, "
-            "verified repositories. Only add repos that are clearly technical projects (not forks, not config repos). "
-            "Do NOT fabricate descriptions — use the repo description and README excerpt as-is.\n\n"
+            "IMPORTANT: Use these sources to enrich the profile only with verified data. You may add technical "
+            "repositories to the 'projects' array, but do NOT fabricate descriptions or claim access to private data.\n\n"
         )
 
     return _run_agent_task_with_json(
@@ -1381,16 +1412,56 @@ def html_to_latex(html_source: str, doc_type: str = "cv") -> str:
     return latex_doc
 
 
-def compile_latex_to_pdf(tex_source: str, output_name: str) -> Path:
-    """Compile LaTeX source to PDF using pdflatex command line."""
+def _latex_compiler_candidates() -> list[tuple[str, str]]:
     import shutil
+
+    configured_compiler = os.getenv("LATEX_COMPILER", "").strip()
+    configured_path = os.getenv("PDFLATEX_PATH", "").strip()
+    if configured_path:
+        return [(Path(configured_path).stem, configured_path)] if os.path.exists(configured_path) else []
+
+    compiler_names = [configured_compiler] if configured_compiler else ["lualatex", "pdflatex"]
+    return [
+        (name, path)
+        for name in compiler_names
+        if (path := shutil.which(name))
+    ]
+
+
+def verify_latex_compiler() -> str:
+    """Verify that the selected LaTeX executable can start before generation."""
     import subprocess
 
-    pdflatex_bin = shutil.which("pdflatex") or os.getenv("PDFLATEX_PATH", "")
-    if not pdflatex_bin or not os.path.exists(pdflatex_bin):
+    errors = []
+    for name, compiler_bin in _latex_compiler_candidates():
+        try:
+            proc = subprocess.run(
+                [compiler_bin, "--version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=10,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if proc.returncode == 0:
+                logger.info("[LaTeX] preflight passed: %s", name)
+                return compiler_bin
+            errors.append(f"{name} exit code {proc.returncode}")
+        except (OSError, subprocess.SubprocessError) as exc:
+            errors.append(f"{name}: {exc}")
+    raise RuntimeError("LaTeX compiler could not start: " + " | ".join(errors))
+
+
+def compile_latex_to_pdf(tex_source: str, output_name: str) -> Path:
+    """Compile LaTeX source to PDF using an available LaTeX engine."""
+    import subprocess
+
+    compiler_candidates = [path for _, path in _latex_compiler_candidates()]
+
+    if not compiler_candidates:
         raise FileNotFoundError(
-            "pdflatex compiler not found. Install MiKTeX/TeX Live or set the "
-            "PDFLATEX_PATH environment variable to enable PDF compilation."
+            "No LaTeX compiler found. Install MiKTeX/TeX Live, "
+            "set LATEX_COMPILER, or set PDFLATEX_PATH."
         )
 
     tex_path = OUTPUT_DIR / f"{output_name}.tex"
@@ -1398,15 +1469,45 @@ def compile_latex_to_pdf(tex_source: str, output_name: str) -> Path:
 
     tex_path.write_text(tex_source, encoding="utf-8")
 
-    cmd = [
-        pdflatex_bin,
-        "-interaction=nonstopmode",
-        "-halt-on-error",
-        f"-output-directory={OUTPUT_DIR.resolve()}",
-        str(tex_path.resolve()),
-    ]
+    errors = []
+    for compiler_bin in compiler_candidates:
+        compiler_name = Path(compiler_bin).stem
+        cmd = [
+            compiler_bin,
+            "-interaction=nonstopmode",
+            "-halt-on-error",
+            f"-output-directory={OUTPUT_DIR.resolve()}",
+            str(tex_path.resolve()),
+        ]
+        try:
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except OSError as exc:
+            errors.append(f"{compiler_name}: {exc}")
+            continue
 
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if proc.returncode == 0 and pdf_path.exists() and pdf_path.stat().st_size > 0:
+            for ext in (".aux", ".log", ".out", ".tex"):
+                aux_file = OUTPUT_DIR / f"{output_name}{ext}"
+                if aux_file.exists():
+                    try:
+                        aux_file.unlink()
+                    except Exception:
+                        pass
+            return pdf_path
+
+        output = (proc.stderr or proc.stdout or "").strip().replace("\n", " ")
+        errors.append(f"{compiler_name} exit code {proc.returncode}: {output[-500:]}")
+        if pdf_path.exists():
+            try:
+                pdf_path.unlink()
+            except Exception:
+                pass
 
     for ext in (".aux", ".log", ".out", ".tex"):
         aux_file = OUTPUT_DIR / f"{output_name}{ext}"
@@ -1415,21 +1516,19 @@ def compile_latex_to_pdf(tex_source: str, output_name: str) -> Path:
                 aux_file.unlink()
             except Exception:
                 pass
-
-    if proc.returncode != 0 or not pdf_path.exists() or pdf_path.stat().st_size == 0:
-        raise RuntimeError(f"pdflatex exit code {proc.returncode}. Stderr: {proc.stderr[:300]}")
-
-    return pdf_path
+    raise RuntimeError("LaTeX compilation failed: " + " | ".join(errors))
 
 
 def run_compilation(html_source: str, output_name: str) -> Path:
     """Agent 7: Compile document to PDF via the LaTeX compiler (pdflatex)."""
+    started_at = time.perf_counter()
+    logger.info("[Agent 7][Compilation] started: %s", output_name)
     doc_type = "cover_letter" if "cover_letter_" in output_name else "cv"
     tex_source = html_to_latex(html_source, doc_type=doc_type)
     compiled_pdf = compile_latex_to_pdf(tex_source, output_name)
     if not compiled_pdf.exists() or compiled_pdf.stat().st_size == 0:
         raise RuntimeError("LaTeX compilation produced an empty or missing PDF.")
-    logger.info(f"[Agent 7] LaTeX compilation succeeded: {compiled_pdf.name}")
+    logger.info("[Agent 7][Compilation] completed in %.1fs: %s", time.perf_counter() - started_at, compiled_pdf.name)
     return compiled_pdf
 
 
@@ -1554,6 +1653,11 @@ def run_generation_only(
         portfolio_projects = run_portfolio_fetch(all_links)
         logger.info(f"[Pipeline] Fetched {len(portfolio_projects)} portfolio entries")
 
+    # Preserve every verified source for downstream generation and UI
+    # observability. Repository selection below is driven by the analyzed JD.
+    if portfolio_projects:
+        enriched_data = {**enriched_data, "_verified_portfolio_sources": portfolio_projects}
+
     # Phase 2.6: Merge & Rank GitHub repositories for target Job Description
     all_candidate_projects = list(enriched_data.get("projects", []) or [])
     if portfolio_projects:
@@ -1593,23 +1697,9 @@ def run_generation_only(
         cv_html = run_cv_generation(enriched_data, jd_analysis, notes)
         cv_html = _enforce_complete_resume_sections(cv_html, enriched_data)
 
-        # Agent 5: Review & Score (graceful failure)
-        logger.info("[Pipeline] Agent 5: Reviewing and scoring CV...")
-        review = run_review_and_polish(cv_html, jd_analysis)
-        if review:
-            results["ats_report"] = {
-                "score": review.get("score", 88),
-                "strengths": review.get("strengths", []),
-                "suggestions": review.get("suggestions", []),
-            }
-            # Adopt the polished HTML when valid; re-enforce deterministic
-            # header/sections so the reviewer cannot mangle contact details.
-            polished = review.get("polished_html")
-            if isinstance(polished, str) and ("<html" in polished.lower() or "<body" in polished.lower()):
-                logger.info("[Pipeline] Agent 5: Adopting polished CV HTML...")
-                cv_html = _enforce_complete_resume_sections(polished, enriched_data)
-        else:
-            results["ats_report"] = None
+        # Optional Agent 5 review is disabled for the fast generation path.
+        logger.info("[Pipeline] Agent 5 review skipped for fast generation")
+        results["ats_report"] = None
 
         logger.info("[Pipeline] Agent 7: Compiling CV to PDF...")
         cv_pdf = run_compilation(cv_html, f"cv_{run_id}")
@@ -1627,6 +1717,7 @@ def run_generation_only(
         results["cover_letter_html"] = cl_html
 
     results["cleaned_data"] = enriched_data
+    results["enrichment_data"] = portfolio_projects
     return results
 
 

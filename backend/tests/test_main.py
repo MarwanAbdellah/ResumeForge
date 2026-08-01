@@ -25,7 +25,9 @@ class TestHealthEndpoint:
     def test_health_check_returns_ok(self):
         res = client.get("/api/health")
         assert res.status_code == 200
-        assert res.json() == {"status": "ok"}
+        data = res.json()
+        assert data.get("status") == "ok"
+        assert "latex_compiler" in data
 
 
 class TestExtractEndpoint:

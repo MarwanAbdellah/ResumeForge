@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   Briefcase,
   ShieldCheck,
@@ -116,6 +116,7 @@ export default function ATSCheckerTool() {
   const [extractedText, setExtractedText] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
   const [jobDescription, setJobDescription] = useState("");
+  const extractionInFlight = useRef(false);
 
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState(null);
@@ -136,6 +137,8 @@ export default function ATSCheckerTool() {
   }, []);
 
   const startExtraction = async (file) => {
+    if (extractionInFlight.current) return;
+    extractionInFlight.current = true;
     setIsExtracting(true);
     try {
       const data = await extractFile(file);
@@ -143,6 +146,7 @@ export default function ATSCheckerTool() {
     } catch (err) {
       setExtractedText(`[Extraction error: ${err.message}]`);
     } finally {
+      extractionInFlight.current = false;
       setIsExtracting(false);
     }
   };
