@@ -67,9 +67,9 @@ graph TD
 ### Backend
 - **Framework**: FastAPI (Python 3.12)
 - **AI Agent Orchestration**: CrewAI 1.15.9 & LiteLLM
-- **LLM Engine**: Groq `llama-3.3-70b-versatile` (300+ tokens/sec)
+- **LLM Engine**: OpenRouter `nvidia/nemotron-3-ultra-550b-a55b:free` (free tier)
 - **Web Search**: SerperDevTool (`serper_web_search`)
-- **PDF Generation**: `xhtml2pdf` (pisa) with resilient CSS sanitization
+- **PDF Generation**: LaTeX (`pdflatex`) — agent HTML is converted to LaTeX and compiled to A4 PDF
 - **Testing**: `pytest` & `unittest.mock`
 
 ### Frontend
@@ -105,9 +105,9 @@ uv pip install -r requirements.txt
 
 Create a `backend/.env` file with your API credentials:
 ```env
-GROQ_API_KEY=your_groq_api_key
+OPENROUTER_API_KEY=your_openrouter_api_key
 SERPER_API_KEY=your_serper_api_key
-CREWAI_TRACING_ENABLED=true
+CREWAI_TRACING_ENABLED=false
 ```
 
 Start the FastAPI backend server:
@@ -119,6 +119,7 @@ python main.py
 ### 3. Frontend Setup
 ```bash
 # From root directory
+cd frontend
 npm install
 npm run dev
 ```
@@ -136,11 +137,13 @@ cd backend
 
 ### Run Frontend Component Tests (`5/5 Passed`)
 ```bash
+cd frontend
 npm run test
 ```
 
 ### Run Frontend Linter (`0 Warnings, 0 Errors`)
 ```bash
+cd frontend
 npm run lint
 ```
 
@@ -156,15 +159,17 @@ ResumeForge/
 │   ├── templates/             # Harshibar HTML/CSS resume templates
 │   ├── tools/                 # Link fetchers, extractors & SerperDev tools
 │   └── tests/                 # Backend pytest suite
-├── src/
-│   ├── components/            # React UI Components
-│   │   ├── ResumeCreator.jsx  # Main App Container & Pre-Gen Interview
-│   │   ├── ProgressTracker.jsx# Observability Terminal Drawer
-│   │   ├── ATSCheckerTool.jsx # Independent ATS Audit Tool
-│   │   └── DocumentPreview.jsx# PDF Previewer & Downloader
-│   ├── api/client.js          # REST Client
-│   └── __tests__/             # Frontend vitest suite
-├── package.json
+├── frontend/
+│   ├── src/
+│   │   ├── components/        # React UI Components
+│   │   │   ├── ResumeCreator.jsx   # Main App Container & Pre-Gen Interview
+│   │   │   ├── ProgressTracker.jsx # Observability Terminal Drawer
+│   │   │   ├── ATSCheckerTool.jsx  # Independent ATS Audit Tool
+│   │   │   └── GenerationResults.jsx # PDF Previewer & Downloader
+│   │   ├── api/client.js      # REST Client
+│   │   └── __tests__/         # Frontend vitest suite
+│   ├── public/
+│   └── package.json
 └── README.md
 ```
 

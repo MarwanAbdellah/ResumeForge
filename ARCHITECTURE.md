@@ -2,7 +2,7 @@
 
 ## 1. System Overview
 
-ResumeForge is a full-stack, AI-powered resume and cover letter generation platform. It uses a multi-agent AI pipeline (CrewAI) backed by NVIDIA NIM's diffusiongemma model to extract, structure, analyze, generate, review, and compile job-tailored application documents.
+ResumeForge is a full-stack, AI-powered resume and cover letter generation platform. It uses a multi-agent AI pipeline (CrewAI) backed by OpenRouter's `nvidia/nemotron-3-ultra-550b-a55b:free` model to extract, structure, analyze, generate, review, and compile job-tailored application documents.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -43,20 +43,21 @@ ResumeForge is a full-stack, AI-powered resume and cover letter generation platf
 │     │         │                  │                                  │
 │  ┌──▼───┐ ┌──▼──────────┐ ┌────▼─────────────────────────────┐   │
 │  │tools/│ │tools/        │ │templates/                        │   │
-│  │extrac│ │nvidia_nim.py │ │cv_template.html                  │   │
-│  │tors  │ │link_fetcher  │ │cover_letter_template.html        │   │
-│  └──┬───┘ └──┬──────────┘ └──────────────────────────────────┘   │
+│  │extrac│ │link_fetcher  │ │cv_template.html                  │   │
+│  │tors  │ │(GitHub +     │ │cover_letter_template.html        │   │
+│  └──┬───┘ │ SerperDev)   │ └──────────────────────────────────┘   │
+│     │     └──┬──────────┘                                          │
 │     │        │                                                     │
 │     │        ▼                                                     │
 │     │  ┌──────────────────────────────────────┐                   │
-│     │  │  NVIDIA NIM API                       │                   │
-│     │  │  google/diffusiongemma-26b-a4b-it     │                   │
-│     │  │  (chat_template_kwargs: enable_thinking)│                   │
+│     │  │  OpenRouter API (via litellm)         │                   │
+│     │  │  nvidia/nemotron-3-ultra-550b-a55b    │                   │
+│     │  │  :free (temperature 0.2, 4096 tokens) │                   │
 │     │  └──────────────────────────────────────┘                   │
 │     │                                                              │
 │     ▼                                                              │
 │  ┌──────────────────────────────────────┐                         │
-│  │  xhtml2pdf (HTML → PDF)              │                         │
+│  │  pdflatex (HTML → LaTeX → PDF)       │                         │
 │  │  output/cv_*.pdf                     │                         │
 │  │  output/cover_letter_*.pdf           │                         │
 │  └──────────────────────────────────────┘                         │
@@ -78,11 +79,11 @@ ResumeForge is a full-stack, AI-powered resume and cover letter generation platf
 | **Frontend Testing** | Vitest | 3.0.x | Unit/integration tests (jsdom) |
 | **Backend Framework** | FastAPI | 0.140.x | Async REST API |
 | **AI Orchestration** | CrewAI | 1.15.x | Multi-agent AI pipeline |
-| **LLM** | NVIDIA NIM | — | `google/diffusiongemma-26b-a4b-it` |
+| **LLM** | OpenRouter (litellm) | — | `nvidia/nemotron-3-ultra-550b-a55b:free` |
 | **PDF Extraction** | pdfplumber | 0.11.x | PDF text + hyperlink extraction |
 | **DOCX Extraction** | python-docx | 1.1.x | Word document text extraction |
-| **PDF Generation** | xhtml2pdf | 0.2.17 | HTML → PDF compilation |
-| **HTTP Client** | requests | 2.31.x | NVIDIA NIM API calls |
+| **PDF Generation** | pdflatex (MiKTeX/TeX Live) | — | HTML → LaTeX → PDF compilation |
+| **HTML Parsing** | BeautifulSoup4 | 4.12.x | HTML → LaTeX conversion |
 | **Validation** | Pydantic | 2.0.x | Request/response schemas |
 | **Backend Testing** | pytest + httpx | 8.0.x / 0.27.x | API and unit tests |
 | **Containerization** | Docker | — | Backend deployment image |
@@ -93,15 +94,20 @@ ResumeForge is a full-stack, AI-powered resume and cover letter generation platf
 ## 3. Project Structure
 
 ```
-tips_hindawi_final/
-├── index.html                          # Vite entry HTML
-├── package.json                        # Frontend dependencies & scripts
-├── vite.config.js                      # Vite + React + Tailwind plugins
-├── vitest.config.js                    # Vitest (jsdom, globals)
-├── .oxlintrc.json                      # Oxlint config (react, oxc)
+ResumeForge/
+├── railway.json                        # Railway backend deployment config
 ├── .gitignore
 │
-├── src/                                # ── FRONTEND SOURCE ──
+├── frontend/                           # ── FRONTEND ──
+│   ├── index.html                      # Vite entry HTML
+│   ├── package.json                    # Frontend dependencies & scripts
+│   ├── vite.config.js                  # Vite + React + Tailwind plugins
+│   ├── vitest.config.js                # Vitest (jsdom, globals)
+│   ├── .oxlintrc.json                  # Oxlint config (react, oxc)
+│   ├── vercel.json                     # Vercel frontend deployment config
+│   ├── public/                         # Static assets
+│   │
+│   └── src/                            # ── FRONTEND SOURCE ──
 │   ├── main.jsx                        # React root mount (<StrictMode>)
 │   ├── App.jsx                         # Root layout: Nav → Hero → Features → Input → Footer
 │   ├── index.css                       # Tailwind import, theme tokens, animations, glass effects
@@ -118,13 +124,14 @@ tips_hindawi_final/
 │   │   ├── CentralGlow.jsx             # SVG ambient glow effect
 │   │   ├── LiquidGlassCard.jsx         # Glass-morphism floating card
 │   │   ├── FeatureSlider.jsx           # 4-feature card grid with scroll animations
-│   │   ├── InputSection.jsx            # Main orchestrator: upload/manual → generate → results
+│   │   ├── FeatureSection.jsx          # Tabs: ResumeCreator ↔ ATSCheckerTool
+│   │   ├── ResumeCreator.jsx           # Main orchestrator: upload/manual → generate → results
+│   │   ├── ATSCheckerTool.jsx          # Standalone ATS audit + gap recalibration
 │   │   ├── FileUpload.jsx              # Drag-and-drop file upload (PDF/DOCX/TXT)
 │   │   ├── ManualForm.jsx              # Manual data entry (name, email, skills, experience)
 │   │   ├── Notes.jsx                   # Optional user notes textarea
 │   │   ├── ProgressTracker.jsx         # 6-step progress indicator during generation
 │   │   ├── GenerationResults.jsx       # Preview/download buttons + ATS report display
-│   │   ├── ATSChecker.jsx              # Post-generation ATS compatibility checker
 │   │   └── Footer.jsx                  # Site footer
 │   │
 │   └── __tests__/
@@ -137,8 +144,7 @@ tips_hindawi_final/
 │   │
 │   ├── tools/
 │   │   ├── extractors.py               # PDF/DOCX/TXT text extraction (pdfplumber, python-docx)
-│   │   ├── nvidia_nim.py               # Custom NvidiaNimLLM wrapper (BaseLLM subclass)
-│   │   └── link_fetcher.py             # Portfolio link fetcher (GitHub/HuggingFace/Kaggle)
+│   │   └── link_fetcher.py             # Portfolio link fetcher (GitHub/HuggingFace/Kaggle) + SerperDev search
 │   │
 │   ├── templates/
 │   │   ├── cv_template.html            # Single-column ATS-friendly CV template
@@ -150,14 +156,12 @@ tips_hindawi_final/
 │   │   ├── test_extractors.py          # Extraction unit tests
 │   │   └── test_security.py            # Path traversal prevention tests
 │   │
-│   ├── .env                            # NVIDIA_NIM_API_KEY (gitignored)
+│   ├── .env                            # OPENROUTER_API_KEY, SERPER_API_KEY (gitignored)
 │   ├── .env.example                    # Template for env vars
 │   ├── requirements.txt                # Python dependencies
-│   ├── Dockerfile                      # Python 3.12-slim container
+│   ├── Dockerfile                      # Python 3.12-slim + texlive container
 │   └── pytest.ini                      # pytest configuration
 │
-├── vercel.json                         # Vercel frontend deployment config
-├── railway.json                        # Railway backend deployment config
 ├── DEPLOY.md                           # Deployment guide
 ├── CONTEXT.md                          # Project context for AI assistants
 └── README.md                           # Project documentation
@@ -329,14 +333,13 @@ The pipeline orchestrates 7 agents in a sequential flow:
 | 4 | ATS Resume Generator | Generate ATS-optimized HTML CV | Yes | HTML template |
 | 5 | Review & Polish | Score, fix hallucinations, polish CV | Yes | — |
 | 6 | Cover Letter Writer | Generate tailored HTML cover letter | Yes | HTML template |
-| 7 | PDF Compilation | Convert HTML → PDF | No | xhtml2pdf |
+| 7 | PDF Compilation | Convert HTML → LaTeX → PDF | No | pdflatex, BeautifulSoup4 |
 
-**All LLM agents** use the same `NvidiaNimLLM` instance configured with:
-- Model: `google/diffusiongemma-26b-a4b-it`
-- Temperature: 1.0, Top-p: 0.95
-- Thinking enabled: `chat_template_kwargs: {enable_thinking: True}`
-- Timeout: 120 seconds
+**All LLM agents** share the same CrewAI `LLM` instance configured with:
+- Model: `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free` (litellm)
+- Temperature: 0.2
 - Max tokens: 4096
+- A `litellm.completion` patch strips `cache_control`/empty `tools` params unsupported by the free tier
 
 #### Key Helper Functions
 
@@ -349,20 +352,18 @@ The pipeline orchestrates 7 agents in a sequential flow:
 | `_run_agent_task_with_json(...)` | Run task + parse JSON with retry logic (up to 3 attempts) |
 | `_get_crew_output(result)` | Extract raw text from CrewAI result object |
 
-### 5.3 Custom LLM Wrapper (`tools/nvidia_nim.py`)
+### 5.3 LLM Configuration (OpenRouter via litellm)
 
-`NvidiaNimLLM` extends `crewai.llms.base_llm.BaseLLM` and calls the NVIDIA NIM API directly via `requests.post` instead of using litellm. This is required because diffusiongemma needs `chat_template_kwargs: {enable_thinking: True}`, which litellm doesn't support.
+All agents use a single CrewAI `LLM` instance backed by litellm's OpenRouter provider. Authentication is via the `OPENROUTER_API_KEY` environment variable.
 
 ```
-POST https://integrate.api.nvidia.com/v1/chat/completions
-Authorization: Bearer {NVIDIA_NIM_API_KEY}
+POST https://openrouter.ai/api/v1/chat/completions
+Authorization: Bearer {OPENROUTER_API_KEY}
 Body: {
   messages: [...],
-  model: "google/diffusiongemma-26b-a4b-it",
-  chat_template_kwargs: {enable_thinking: true},
+  model: "nvidia/nemotron-3-ultra-550b-a55b:free",
   max_tokens: 4096,
-  temperature: 1.0,
-  top_p: 0.95,
+  temperature: 0.2,
   stream: false
 }
 ```
@@ -402,10 +403,7 @@ Fetches portfolio URLs (GitHub, HuggingFace, Kaggle, etc.) and returns structure
 
 ### 5.7 PDF Compilation
 
-Uses `xhtml2pdf` (pisa) to convert HTML → PDF:
-```python
-pisa.CreatePDF(html_source, dest=file_handle)
-```
+Compilation is LaTeX-only: `html_to_latex()` parses the agent HTML with BeautifulSoup and emits a complete LaTeX document (`article` class, A4, `hyperref`/`enumitem`/`xcolor`), which `compile_latex_to_pdf()` renders via the `pdflatex` CLI. The binary is resolved via `PATH` lookup, then the `PDFLATEX_PATH` env var.
 Output files are saved to `backend/output/` with names like `cv_{run_id}.pdf` and `cover_letter_{run_id}.pdf` where `run_id` is an 8-character UUID hex.
 
 ---
@@ -470,16 +468,16 @@ Output files are saved to `backend/output/` with names like `cv_{run_id}.pdf` an
 │  │  Vite Build Output   │──┼─────────┼─▶│  Docker Container     │  │
 │  │  dist/               │  │  proxy  │  │  Python 3.12-slim     │  │
 │  └──────────────────────┘  │         │  │  FastAPI + CrewAI     │  │
-│                            │         │  │  xhtml2pdf            │  │
+│                            │         │  │  texlive (pdflatex)   │  │
 │  vercel.json rewrites:     │         │  └──────────┬───────────┘  │
 │  /api/* → Railway URL      │         │             │              │
 └────────────────────────────┘         └─────────────┼──────────────┘
                                                      │
                                                      ▼
-                                          ┌─────────────────────┐
-                                          │  NVIDIA NIM API     │
-                                          │  diffusiongemma-26b │
-                                          └─────────────────────┘
+                                           ┌─────────────────────┐
+                                           │  OpenRouter API     │
+                                           │  Nemotron 3 Ultra   │
+                                           └─────────────────────┘
 ```
 
 **Vercel (Frontend):**
@@ -491,12 +489,12 @@ Output files are saved to `backend/output/` with names like `cv_{run_id}.pdf` an
 - Docker-based deployment from `backend/Dockerfile`
 - Health check: `GET /api/health`
 - Auto-restart on failure (max 3 retries)
-- Environment variables: `NVIDIA_NIM_API_KEY`, `CREWAI_TRACING_ENABLED`
+- Environment variables: `OPENROUTER_API_KEY`, `SERPER_API_KEY`, `CREWAI_TRACING_ENABLED`
 - Free tier: $5 credit/month, 512MB RAM, 1 vCPU
 
 **Local Development:**
-- Frontend: `npm run dev` → `http://localhost:5173`
-- Backend: `uv run python main.py` → `http://localhost:8000`
+- Frontend: `cd frontend && npm run dev` → `http://localhost:5173`
+- Backend: `cd backend && uv run python main.py` → `http://localhost:8000`
 - Set `VITE_API_URL=http://localhost:8000` for local API connection
 
 ---
@@ -566,7 +564,8 @@ All agent prompts explicitly enforce:
 
 ```bash
 # Frontend
-npm test          # vitest run
+cd frontend
+npm test            # vitest run
 npm run test:watch  # vitest (watch mode)
 
 # Backend
@@ -578,11 +577,11 @@ pytest tests/ -v
 
 ## 10. Key Design Decisions
 
-### 10.1 Custom LLM Wrapper
+### 10.1 OpenRouter via litellm
 
-**Decision:** Build a custom `NvidiaNimLLM` class extending CrewAI's `BaseLLM` instead of using litellm.
+**Decision:** Use CrewAI's native `LLM` class with litellm's `openrouter/` provider prefix instead of a custom LLM wrapper.
 
-**Reason:** NVIDIA NIM's diffusiongemma model requires `chat_template_kwargs: {enable_thinking: True}` in the API payload. litellm doesn't support passing this parameter. The custom wrapper uses `requests.post` directly to the NIM API endpoint.
+**Reason:** CrewAI + litellm natively support OpenRouter, so no custom wrapper is needed. A thin `litellm.completion` patch strips parameters the free tier rejects (`cache_control`, empty `tools`), keeping the provider integration maintained upstream. The free Nemotron tier keeps API cost at zero.
 
 ### 10.2 Pipeline Split
 
@@ -594,14 +593,14 @@ pytest tests/ -v
 - Provides granular error handling per step
 - Allows the user to review extracted text before generation
 
-### 10.3 HTML Templates for PDF
+### 10.3 HTML Intermediate + LaTeX Compilation
 
-**Decision:** Generate HTML first, then convert to PDF via xhtml2pdf, rather than generating PDF directly.
+**Decision:** Generate HTML first, convert to LaTeX, then compile to PDF via pdflatex, rather than generating PDF directly.
 
 **Reason:**
-- LLMs are much better at generating HTML than raw PDF
+- LLMs are much better at generating HTML than raw PDF or raw LaTeX
 - HTML templates are easy to customize and maintain
-- xhtml2pdf handles CSS-based layout reliably
+- pdflatex produces professional, deterministic A4 typesetting with no CSS-engine quirks
 - Single-column format ensures ATS compatibility
 
 ### 10.4 Graceful Review Failure
@@ -658,9 +657,9 @@ The structuring agent is the most constrained: it must parse raw text without ad
 
 ### 12.3 PDF Compilation
 
-- xhtml2pdf errors: checked via `status.err`
+- pdflatex errors: non-zero exit code / missing output raise `RuntimeError` with stderr excerpt
+- Missing compiler: `FileNotFoundError` with install hint (`PDFLATEX_PATH` override supported)
 - Empty PDF detection: verified via `path.stat().st_size == 0`
-- Both conditions raise `RuntimeError` with specific messages
 
 ---
 
@@ -668,12 +667,12 @@ The structuring agent is the most constrained: it must parse raw text without ad
 
 | Concern | Mitigation |
 |---|---|
-| LLM latency (diffusiongemma is slow) | 120s timeout, thinking enabled for quality over speed |
+| LLM latency / free-tier rate limits | Sequential agent calls, JSON retry with backoff (up to 3 attempts per agent) |
 | Blocking CrewAI in async FastAPI | `asyncio.to_thread()` wraps all synchronous pipeline calls |
 | Large file uploads | 10 MB limit enforced before extraction |
 | Video background | HLS adaptive streaming, muted autoplay with fallback |
 | CSS animations | `prefers-reduced-motion` support, GPU-accelerated transforms |
-| PDF generation | Synchronous xhtml2pdf in thread pool, output cached on disk |
+| PDF generation | Synchronous pdflatex subprocess in thread pool, output cached on disk |
 | Portfolio fetching | 8s timeout per URL, graceful degradation on failure |
 
 ---
@@ -682,10 +681,12 @@ The structuring agent is the most constrained: it must parse raw text without ad
 
 | Variable | Location | Required | Purpose |
 |---|---|---|---|
-| `NVIDIA_NIM_API_KEY` | `backend/.env` | Yes | NVIDIA NIM API authentication |
-| `CREWAI_TRACING_ENABLED` | `backend/.env` | No | Enable CrewAI tracing logs |
+| `OPENROUTER_API_KEY` | `backend/.env` | Yes | OpenRouter API authentication |
+| `SERPER_API_KEY` | `backend/.env` | Yes | SerperDev web search tool |
+| `PDFLATEX_PATH` | `backend/.env` | No | Absolute pdflatex path if not on `PATH` |
+| `CREWAI_TRACING_ENABLED` | `backend/.env` | No | Enable CrewAI tracing logs (default false) |
 | `PORT` | Railway env | No | Backend port (default: 8000) |
-| `VITE_API_URL` | Frontend `.env` | No | Backend URL (default: localhost:8000) |
+| `VITE_API_URL` | `frontend/.env` | No | Backend URL (default: localhost:8000) |
 
 ---
 
@@ -700,11 +701,12 @@ Frontend Dependencies:
 
 Backend Dependencies:
   fastapi → uvicorn, python-multipart, pydantic
-  crewai → langchain-nvidia-ai-endpoints
+  crewai → litellm (OpenRouter provider)
   pdfplumber (PDF extraction)
   python-docx (DOCX extraction)
-  xhtml2pdf (HTML → PDF)
-  requests (NVIDIA NIM API)
+  beautifulsoup4 (HTML → LaTeX conversion)
+  pdflatex via MiKTeX/TeX Live (PDF compilation, system binary)
+  requests (portfolio link fetching)
   python-dotenv (env loading)
   pytest, httpx (testing)
 ```

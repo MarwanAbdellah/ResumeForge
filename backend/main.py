@@ -1,17 +1,21 @@
 import os
 import re
+import json
 import asyncio
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from crew import run_extraction, run_cleaning, run_generation_only, run_jd_analysis, run_ats_checker_crew, run_structuring
+from crew import run_extraction, run_generation_only, run_jd_analysis, run_ats_checker_crew, run_structuring
 from tools.link_fetcher import fetch_portfolio_links
 
 app = FastAPI(title="ResumeForge API", version="1.0.0")

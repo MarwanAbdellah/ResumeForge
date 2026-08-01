@@ -2,9 +2,9 @@
 
 ## Architecture
 ```
-Vercel (Frontend)  →  Railway (Backend)  →  NVIDIA NIM API
-     React/Vite         Python/FastAPI         diffusiongemma
-                          + xhtml2pdf
+Vercel (Frontend)  →  Railway (Backend)  →  OpenRouter API
+     React/Vite         Python/FastAPI      Nemotron 3 Ultra (free)
+                          + pdflatex (texlive)
 ```
 
 ## Why Not Vercel for Backend?
@@ -20,10 +20,11 @@ Vercel serverless functions have tight timeout and memory limits that make AI-po
 2. Go to [railway.app](https://railway.app) → Sign in with GitHub
 3. Click **"New Project"** → **"Deploy from GitHub repo"**
 4. Select your repo
-5. Railway will detect the `Dockerfile` in `backend/`
+5. Railway will detect the `Dockerfile` in `backend/` (texlive for pdflatex is installed in the image)
 6. Add environment variables:
-   - `NVIDIA_NIM_API_KEY` = your NVIDIA API key
-   - `CREWAI_TRACING_ENABLED` = `true`
+   - `OPENROUTER_API_KEY` = your OpenRouter API key
+   - `SERPER_API_KEY` = your Serper.dev API key
+   - `CREWAI_TRACING_ENABLED` = `false`
 7. Click **Deploy**
 8. Once deployed, copy the Railway URL (e.g., `https://your-app.up.railway.app`)
 9. Test: `https://your-app.up.railway.app/api/health`
@@ -32,11 +33,12 @@ Vercel serverless functions have tight timeout and memory limits that make AI-po
 
 1. Go to [vercel.com](https://vercel.com) → Sign in with GitHub
 2. Click **"Add New Project"** → Import your repo
-3. Set environment variable:
+3. Set the **Root Directory** to `frontend` (the `frontend/vercel.json` config is picked up automatically)
+4. Set environment variable:
    - `VITE_API_URL` = `https://your-app.up.railway.app` (your Railway URL)
-4. Update `vercel.json` — replace `YOUR_BACKEND_URL.railway.app` with your actual Railway URL
-5. Click **Deploy**
-6. Your app is live at `https://your-app.vercel.app`
+5. Update `frontend/vercel.json` — replace `YOUR_BACKEND_URL.railway.app` with your actual Railway URL
+6. Click **Deploy**
+7. Your app is live at `https://your-app.vercel.app`
 
 ## Step 3: Test
 
@@ -52,8 +54,9 @@ Vercel serverless functions have tight timeout and memory limits that make AI-po
 ### Backend (Railway)
 | Variable | Value | Required |
 |----------|-------|----------|
-| `NVIDIA_NIM_API_KEY` | `nvapi-...` | Yes |
-| `CREWAI_TRACING_ENABLED` | `true` | No |
+| `OPENROUTER_API_KEY` | `sk-or-...` | Yes |
+| `SERPER_API_KEY` | Serper.dev key | Yes |
+| `CREWAI_TRACING_ENABLED` | `false` | No |
 | `PORT` | `8000` | Auto-set by Railway |
 
 ### Frontend (Vercel)
@@ -75,9 +78,8 @@ Vercel serverless functions have tight timeout and memory limits that make AI-po
 - 100GB bandwidth/month
 - Serverless functions included
 
-### NVIDIA NIM API
-- Free tier available with rate limits
-- diffusiongemma-26b: included in free tier
+### OpenRouter API
+- `nvidia/nemotron-3-ultra-550b-a55b:free` is free with rate limits (~20 req/min, daily cap)
 
 ---
 
@@ -86,15 +88,16 @@ Vercel serverless functions have tight timeout and memory limits that make AI-po
 ```bash
 # Backend
 cd backend
-cp .env.example .env  # add your NVIDIA_NIM_API_KEY
+cp .env.example .env  # add your OPENROUTER_API_KEY and SERPER_API_KEY
 uv run python main.py  # http://localhost:8000
 
 # Frontend (new terminal)
+cd frontend
 npm install
 npm run dev  # http://localhost:5173
 ```
 
-Set `VITE_API_URL=http://localhost:8000` in a `.env` file in the project root for local dev.
+Set `VITE_API_URL=http://localhost:8000` in a `.env` file in the `frontend/` directory for local dev.
 
 ---
 
@@ -104,7 +107,7 @@ Set `VITE_API_URL=http://localhost:8000` in a `.env` file in the project root fo
 Backend CORS allows `localhost:5173`, `localhost:3000`, and deployment URLs. If you deploy elsewhere, update the `ALLOWED_ORIGINS` env var on the backend.
 
 ### Timeout errors
-- NVIDIA NIM: 120s timeout (diffusiongemma with thinking enabled is slow)
+- OpenRouter free tier: rate-limited (~20 req/min); a full generation makes several sequential LLM calls, so retries with backoff are built in. Heavy use can hit the daily free cap.
 
 ### "Generation failed" on Vercel
 Check Railway logs — the backend error message is passed through to the frontend.

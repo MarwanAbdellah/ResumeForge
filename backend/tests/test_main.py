@@ -11,7 +11,7 @@ with (
     patch("crew.LLM", MagicMock()),
     patch("crew.Agent", MagicMock()),
     patch("crew.run_extraction", MagicMock(return_value="Sample resume text")),
-    patch("crew.run_cleaning", MagicMock(return_value={"name": "Jane Doe"})),
+    patch("crew.run_structuring", MagicMock(return_value={"name": "Jane Doe"})),
     patch("crew.run_generation_only", MagicMock(return_value={"cv_pdf": "cv_abc.pdf", "cover_letter_pdf": None, "cleaned_data": {}, "ats_report": None})),
     patch("crew.run_jd_analysis", MagicMock(return_value={"required_skills": [], "preferred_skills": [], "ats_keywords": [], "resume_strategy": {}})),
     patch("crew.run_ats_checker_crew", MagicMock(return_value={"score": 75, "verdict": "Strong Match", "matched_keywords": ["Python"], "missing_keywords": [], "preferred_keywords_found": [], "preferred_keywords_missing": [], "section_feedback": {}, "actionable_suggestions": [], "ats_formatting_issues": [], "strengths": ["Good keyword coverage"]})),
@@ -51,8 +51,8 @@ class TestExtractEndpoint:
 
 
 class TestCleanEndpoint:
-    @patch("main.run_cleaning", return_value={"name": "Jane Doe", "skills": {"languages": ["Python"]}})
-    def test_clean_returns_cleaned_data(self, mock_clean):
+    @patch("main.run_structuring", return_value={"name": "Jane Doe", "skills": {"languages": ["Python"]}})
+    def test_clean_returns_cleaned_data(self, mock_struct):
         res = client.post(
             "/api/clean",
             json={"extracted_text": "Jane Doe\nPython developer with 5 years experience."},
@@ -121,6 +121,48 @@ class TestATSCheckEndpoint:
         res = client.post(
             "/api/ats-check",
             json={"job_description": "We need a Python engineer.", "enriched_data": {}},
+        )
+        assert res.status_code == 400
+
+
+class TestGapInquireEndpoint:
+    @patch("main.run_jd_analysis", return_value={"required_skills": ["Docker"], "technical_stack": []})
+    @patch(
+        "main.run_ats_checker_crew",
+        return_value={
+            "score": 70,
+            "verdict": "Moderate Match",
+            "matched_keywords": ["Python"],
+            "missing_keywords": ["Docker"],
+            "preferred_keywords_found": [],
+            "preferred_keywords_missing": [],
+            "section_feedback": {},
+            "actionable_suggestions": [],
+            "ats_formatting_issues": [],
+            "strengths": [],
+            "inquiry_questions": [],
+        },
+    )
+    @patch("main.run_structuring", return_value={"name": "Jane Doe", "summary": "Python dev with Docker exposure"})
+    def test_gap_inquire_with_unlisted_experience(self, mock_struct, mock_ats, mock_jd):
+        # Exercises the json.dumps merge path that previously raised NameError
+        res = client.post(
+            "/api/ats-gap-inquire",
+            json={
+                "job_description": "We need a Python developer with Docker experience.",
+                "enriched_data": {"name": "Jane Doe", "summary": "Python dev"},
+                "unlisted_experience": "I used Docker in a Udemy course project.",
+            },
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert "recalibrated_data" in data
+        assert "inquiry_questions" in data
+
+    def test_gap_inquire_rejects_empty_jd(self):
+        res = client.post(
+            "/api/ats-gap-inquire",
+            json={"job_description": "   ", "enriched_data": {"name": "Jane"}},
         )
         assert res.status_code == 400
 

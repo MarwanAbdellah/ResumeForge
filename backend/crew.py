@@ -8,12 +8,10 @@ import logging
 from datetime import date
 from pathlib import Path
 
-from xhtml2pdf import pisa
-
 from crewai import Agent, Task, Crew, Process, LLM
 
 from tools.extractors import extract_text
-from tools.link_fetcher import fetch_portfolio_links
+from tools.link_fetcher import fetch_portfolio_links, search_serper_web
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +19,8 @@ import litellm
 litellm.drop_params = True
 litellm.modify_params = True
 
-# Intercept litellm.completion to ensure cache_control/cache_breakpoint is stripped for Groq
+# Intercept litellm.completion to strip cache_control/cache_breakpoint params
+# that free-tier OpenRouter models do not support
 _original_litellm_completion = litellm.completion
 
 def _patched_litellm_completion(*args, **kwargs):
@@ -697,7 +696,7 @@ def _run_agent_task(agent, description, expected_output, label="agent"):
         expected_output=expected_output,
         agent=agent,
     )
-    crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=True, tracing=True)
+    crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=True)
     try:
         result = crew.kickoff()
         raw = _get_crew_output(result)
@@ -1135,7 +1134,7 @@ def run_review_and_polish(cv_html: str, jd_analysis: dict) -> dict | None:
                 '  "score": 83,\n'
                 '  "strengths": ["strength1", "strength2"],\n'
                 '  "suggestions": ["suggestion1", "suggestion2"],\n'
-                '  "polished_html": "<!DOCTYPE html>...完整HTML..."</n'
+                '  "polished_html": "<!DOCTYPE html>...complete polished HTML here..."\n'
                 '}\n'
             ),
             expected_output="A JSON object with score, strengths, suggestions, and polished_html.",
@@ -1387,9 +1386,12 @@ def compile_latex_to_pdf(tex_source: str, output_name: str) -> Path:
     import shutil
     import subprocess
 
-    pdflatex_bin = shutil.which("pdflatex") or r"C:\Users\Marwan\AppData\Local\Programs\MiKTeX\miktex\bin\x64\pdflatex.exe"
-    if not os.path.exists(pdflatex_bin) and not shutil.which("pdflatex"):
-        raise FileNotFoundError("pdflatex compiler binary not found on system.")
+    pdflatex_bin = shutil.which("pdflatex") or os.getenv("PDFLATEX_PATH", "")
+    if not pdflatex_bin or not os.path.exists(pdflatex_bin):
+        raise FileNotFoundError(
+            "pdflatex compiler not found. Install MiKTeX/TeX Live or set the "
+            "PDFLATEX_PATH environment variable to enable PDF compilation."
+        )
 
     tex_path = OUTPUT_DIR / f"{output_name}.tex"
     pdf_path = OUTPUT_DIR / f"{output_name}.pdf"
@@ -1421,59 +1423,14 @@ def compile_latex_to_pdf(tex_source: str, output_name: str) -> Path:
 
 
 def run_compilation(html_source: str, output_name: str) -> Path:
-    """Agent 7: Compile document to PDF using LaTeX compiler (pdflatex) with xhtml2pdf fallback."""
-    final_path = OUTPUT_DIR / f"{output_name}.pdf"
-
-    # 1. Attempt LaTeX Compilation (pdflatex)
-    try:
-        doc_type = "cover_letter" if "cover_letter_" in output_name else "cv"
-        tex_source = html_to_latex(html_source, doc_type=doc_type)
-        compiled_pdf = compile_latex_to_pdf(tex_source, output_name)
-        if compiled_pdf.exists() and compiled_pdf.stat().st_size > 0:
-            logger.info(f"[Agent 7] LaTeX compilation succeeded: {compiled_pdf.name}")
-            return compiled_pdf
-    except Exception as e:
-        logger.warning(f"[Agent 7] LaTeX compilation attempt failed ({e}) — falling back to clean HTML/xhtml2pdf...")
-
-    # 2. Fallback: xhtml2pdf
-    template_file = "cv_template.html" if "cv_" in output_name else "cover_letter_template.html"
-    template_css = (TEMPLATES_DIR / template_file).read_text(encoding="utf-8")
-    style_match = re.search(r'<style>([\s\S]*?)</style>', template_css, flags=re.IGNORECASE)
-    clean_style = style_match.group(0) if style_match else "<style></style>"
-
-    clean_html = re.sub(r'<style>[\s\S]*?</style>', '', html_source, flags=re.IGNORECASE)
-    clean_html = re.sub(r'<style>[\s\S]*?(?=<body|<div|<head)', '', clean_html, flags=re.IGNORECASE)
-
-    body_content = clean_html
-    body_match = re.search(r'<body[^>]*>([\s\S]*?)</body>', clean_html, flags=re.IGNORECASE)
-    if body_match:
-        body_content = body_match.group(1)
-
-    sanitized_html = (
-        f'<!DOCTYPE html>\n'
-        f'<html lang="en">\n'
-        f'<head>\n'
-        f'<meta charset="UTF-8">\n'
-        f'{clean_style}\n'
-        f'</head>\n'
-        f'<body>\n'
-        f'{body_content}\n'
-        f'</body>\n'
-        f'</html>'
-    )
-
-    try:
-        with open(final_path, "wb") as f:
-            status = pisa.CreatePDF(sanitized_html, dest=f)
-            if status.err:
-                raise RuntimeError(f"xhtml2pdf conversion failed with {status.err} errors")
-    except Exception as e:
-        logger.error(f"PDF compilation failed ({e})")
-        raise RuntimeError(f"PDF compilation failed: {e}")
-
-    if not final_path.exists() or final_path.stat().st_size == 0:
-        raise RuntimeError("PDF was not generated or is empty.")
-    return final_path
+    """Agent 7: Compile document to PDF via the LaTeX compiler (pdflatex)."""
+    doc_type = "cover_letter" if "cover_letter_" in output_name else "cv"
+    tex_source = html_to_latex(html_source, doc_type=doc_type)
+    compiled_pdf = compile_latex_to_pdf(tex_source, output_name)
+    if not compiled_pdf.exists() or compiled_pdf.stat().st_size == 0:
+        raise RuntimeError("LaTeX compilation produced an empty or missing PDF.")
+    logger.info(f"[Agent 7] LaTeX compilation succeeded: {compiled_pdf.name}")
+    return compiled_pdf
 
 
 def _rank_and_select_projects_for_jd(all_projects: list[dict], jd_analysis: dict) -> list[dict]:
@@ -1645,6 +1602,12 @@ def run_generation_only(
                 "strengths": review.get("strengths", []),
                 "suggestions": review.get("suggestions", []),
             }
+            # Adopt the polished HTML when valid; re-enforce deterministic
+            # header/sections so the reviewer cannot mangle contact details.
+            polished = review.get("polished_html")
+            if isinstance(polished, str) and ("<html" in polished.lower() or "<body" in polished.lower()):
+                logger.info("[Pipeline] Agent 5: Adopting polished CV HTML...")
+                cv_html = _enforce_complete_resume_sections(polished, enriched_data)
         else:
             results["ats_report"] = None
 
@@ -1776,6 +1739,7 @@ def run_crew(
 ) -> dict:
     """Full pipeline: extract -> structuring -> generate -> compile."""
     raw_text = run_extraction(file_bytes, filename)
-    results = run_generation_only(raw_text, job_description, output_type, notes, portfolio_links)
+    enriched_data = run_structuring(raw_text, notes)
+    results = run_generation_only(enriched_data, job_description, output_type, notes, portfolio_links)
     results["extracted_text"] = raw_text
     return results

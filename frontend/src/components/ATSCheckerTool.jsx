@@ -12,7 +12,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { extractFile, cleanExtractedText, checkAtsMatch } from "../api/client";
+import { extractFile, cleanExtractedText, checkAtsMatch, inquireAtsGap } from "../api/client";
 import FileUpload from "./FileUpload";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -184,8 +184,7 @@ export default function ATSCheckerTool() {
     if (!gapInput.trim() || !lastEnrichedData) return;
     setRecalibrating(true);
     try {
-      const { inquireAtsGap } = await import("../api/client");
-      const report = await inquireAtsGap(lastEnrichedData, jobDescription, gapInput);
+      const report = await inquireAtsGap(jobDescription, lastEnrichedData, gapInput);
       if (report.recalibrated_data) {
         setLastEnrichedData(report.recalibrated_data);
       }

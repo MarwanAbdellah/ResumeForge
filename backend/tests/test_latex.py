@@ -1,7 +1,10 @@
 import os
+import shutil
 from pathlib import Path
 import pytest
 from crew import _latex_escape, html_to_latex, compile_latex_to_pdf, run_compilation
+
+PDFLATEX_AVAILABLE = bool(shutil.which("pdflatex") or os.getenv("PDFLATEX_PATH"))
 
 
 def test_latex_escape():
@@ -45,6 +48,7 @@ def test_html_to_latex_conversion():
     assert r"\item Built scalable Python services" in tex
 
 
+@pytest.mark.skipif(not PDFLATEX_AVAILABLE, reason="pdflatex compiler not installed")
 def test_latex_compilation_end_to_end(tmp_path):
     html = """
     <div class="header"><h1 class="name">Test User</h1></div>
