@@ -37,6 +37,21 @@ export default function FileUpload({
   const fileInputRef = useRef(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [linkInput, setLinkInput] = useState("");
+  const [fileError, setFileError] = useState("");
+
+  const acceptFile = (file, callback) => {
+    const validType = ACCEPTED_TYPES.includes(file.type) || /\.(pdf|docx|txt)$/i.test(file.name);
+    if (!validType) {
+      setFileError("Please select a PDF, DOCX, or TXT file.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setFileError("The file must be smaller than 10MB.");
+      return;
+    }
+    setFileError("");
+    callback(file);
+  };
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
@@ -52,9 +67,7 @@ export default function FileUpload({
       e.preventDefault();
       setIsDragOver(false);
       const file = e.dataTransfer?.files?.[0];
-      if (file && ACCEPTED_TYPES.includes(file.type)) {
-        onFileDrop(file);
-      }
+      if (file) acceptFile(file, onFileDrop);
     },
     [onFileDrop]
   );
@@ -63,7 +76,7 @@ export default function FileUpload({
 
   const handleInputChange = (e) => {
     const file = e.target.files?.[0];
-    if (file) onFileSelect(file);
+    if (file) acceptFile(file, onFileSelect);
   };
 
   const handleAddLink = () => {
@@ -92,6 +105,14 @@ export default function FileUpload({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={handleClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            handleClick();
+          }
+        }}
         className={`
           relative border-2 border-dashed rounded-2xl p-12 md:p-16
           flex flex-col items-center justify-center cursor-pointer
@@ -115,6 +136,7 @@ export default function FileUpload({
         <p className="text-white/25 text-xs mt-2">
           PDF, DOCX, or TXT (max 10MB)
         </p>
+        {fileError && <p role="alert" className="text-red-300 text-xs mt-3">{fileError}</p>}
         <input
           ref={fileInputRef}
           type="file"

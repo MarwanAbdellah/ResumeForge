@@ -3,20 +3,11 @@ Integration tests for the FastAPI backend endpoints.
 Uses FastAPI TestClient with mocked crew functions to avoid LLM calls during CI.
 """
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from fastapi.testclient import TestClient
+from models.schemas import ATSReport, Candidate, JobAnalysis
 
-# Patch heavy imports before loading main
-with (
-    patch("crew.LLM", MagicMock()),
-    patch("crew.Agent", MagicMock()),
-    patch("crew.run_extraction", MagicMock(return_value="Sample resume text")),
-    patch("crew.run_structuring", MagicMock(return_value={"name": "Jane Doe"})),
-    patch("crew.run_generation_only", MagicMock(return_value={"cv_pdf": "cv_abc.pdf", "cover_letter_pdf": None, "cleaned_data": {}, "ats_report": None})),
-    patch("crew.run_jd_analysis", MagicMock(return_value={"required_skills": [], "preferred_skills": [], "ats_keywords": [], "resume_strategy": {}})),
-    patch("crew.run_ats_checker_crew", MagicMock(return_value={"score": 75, "verdict": "Strong Match", "matched_keywords": ["Python"], "missing_keywords": [], "preferred_keywords_found": [], "preferred_keywords_missing": [], "section_feedback": {}, "actionable_suggestions": [], "ats_formatting_issues": [], "strengths": ["Good keyword coverage"]})),
-):
-    from main import app
+from main import app
 
 client = TestClient(app)
 
@@ -31,7 +22,7 @@ class TestHealthEndpoint:
 
 
 class TestExtractEndpoint:
-    @patch("main.run_extraction", return_value="Extracted text content")
+    @patch("main.PipelineService.extract", return_value="Extracted text content")
     def test_extract_txt_file(self, mock_extract):
         content = b"John Doe\nSoftware Engineer\nPython, React"
         res = client.post(
@@ -53,7 +44,7 @@ class TestExtractEndpoint:
 
 
 class TestCleanEndpoint:
-    @patch("main.run_structuring", return_value={"name": "Jane Doe", "skills": {"languages": ["Python"]}})
+    @patch("main.PipelineService.structure", return_value=Candidate(name="Jane Doe"))
     def test_clean_returns_cleaned_data(self, mock_struct):
         res = client.post(
             "/api/clean",
@@ -69,21 +60,7 @@ class TestCleanEndpoint:
 
 
 class TestATSCheckEndpoint:
-    @patch(
-        "main.run_ats_checker_crew",
-        return_value={
-            "score": 82,
-            "verdict": "Strong Match",
-            "matched_keywords": ["Python", "FastAPI"],
-            "missing_keywords": ["Docker"],
-            "preferred_keywords_found": ["React"],
-            "preferred_keywords_missing": [],
-            "section_feedback": {},
-            "actionable_suggestions": [{"priority": "High", "action": "Add Docker experience"}],
-            "ats_formatting_issues": [],
-            "strengths": ["Strong Python background"],
-        },
-    )
+    @patch("main.PipelineService.audit", return_value=ATSReport(score=82, verdict="Strong Match", matched_keywords=["Python", "FastAPI"], missing_keywords=["Docker"], strengths=["Strong Python background"]))
     def test_ats_check_returns_full_report(self, mock_crew):
         enriched = {
             "name": "Jane Doe",
@@ -128,24 +105,9 @@ class TestATSCheckEndpoint:
 
 
 class TestGapInquireEndpoint:
-    @patch("main.run_jd_analysis", return_value={"required_skills": ["Docker"], "technical_stack": []})
-    @patch(
-        "main.run_ats_checker_crew",
-        return_value={
-            "score": 70,
-            "verdict": "Moderate Match",
-            "matched_keywords": ["Python"],
-            "missing_keywords": ["Docker"],
-            "preferred_keywords_found": [],
-            "preferred_keywords_missing": [],
-            "section_feedback": {},
-            "actionable_suggestions": [],
-            "ats_formatting_issues": [],
-            "strengths": [],
-            "inquiry_questions": [],
-        },
-    )
-    @patch("main.run_structuring", return_value={"name": "Jane Doe", "summary": "Python dev with Docker exposure"})
+    @patch("main.PipelineService.analyze", return_value=JobAnalysis(required_skills=["Docker"]))
+    @patch("main.PipelineService.audit", return_value=ATSReport(score=70, verdict="Moderate Match", matched_keywords=["Python"], missing_keywords=["Docker"]))
+    @patch("main.PipelineService.structure", return_value=Candidate(name="Jane Doe", summary="Python dev with Docker exposure"))
     def test_gap_inquire_with_unlisted_experience(self, mock_struct, mock_ats, mock_jd):
         # Exercises the json.dumps merge path that previously raised NameError
         res = client.post(

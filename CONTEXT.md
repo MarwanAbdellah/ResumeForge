@@ -1,20 +1,20 @@
 # ResumeForge - Project Context
 
 ## Overview
-AI-powered resume & cover letter builder using a 7-agent CrewAI swarm, React frontend, and FastAPI backend. Extracts text from uploaded CVs, cleans/structures the data, generates ATS-friendly HTML CVs and cover letters tailored to job descriptions, converts them to LaTeX, and compiles A4 PDFs via pdflatex.
+AI-powered resume & cover letter builder using a structured CrewAI workflow, React frontend, and FastAPI backend. Extracts text from uploaded CVs, validates candidate JSON, tailors content to job descriptions, renders deterministic Jinja2 LaTeX templates, and compiles A4 PDFs via pdflatex.
 
 ## Architecture
 ```
 Frontend (React/Vite) → FastAPI Backend → CrewAI Agents → OpenRouter API (Nemotron 3 Ultra)
                                           ↓
-                              HTML → LaTeX → pdflatex → PDF output
+                              Pydantic JSON → Jinja2 LaTeX → pdflatex → PDF output
 ```
 
 ## Tech Stack
 - **Frontend**: React 19, Vite, TailwindCSS 4, Lucide icons
 - **Backend**: Python 3.12, FastAPI, CrewAI 1.15+
 - **LLM**: `nvidia/nemotron-3-ultra-550b-a55b:free` via OpenRouter (litellm, `openrouter/` prefix)
-- **PDF**: pdflatex (HTML → LaTeX via `html_to_latex` → compiled PDF). Requires MiKTeX/TeX Live locally; texlive is installed in the Dockerfile/CI.
+- **PDF**: pdflatex (validated Pydantic data → Jinja2 LaTeX → compiled PDF). Requires MiKTeX/TeX Live locally; texlive is installed in the Dockerfile/CI.
 - **Testing**: Vitest (frontend), pytest (backend)
 
 ## Project Structure
@@ -53,7 +53,7 @@ backend/
 ├── tools/
 │   ├── extractors.py               # pdfplumber + python-docx extraction + URL extraction
 │   └── link_fetcher.py             # GitHub/portfolio fetcher + SerperDev web search
-├── templates/                      # HTML templates for CV & cover letter (LLM fill-in)
+├── templates/                      # Jinja2 LaTeX templates
 └── tests/
 ```
 
@@ -73,12 +73,11 @@ backend/
 ## Pipeline Flow
 1. **Extract** (`/api/extract`): Upload CV → pdfplumber/python-docx → raw text + URLs
 2. **Clean** (`/api/clean`): Raw text → LLM → structured JSON (optionally enriched with live GitHub data)
-3. **Generate** (`/api/generate`): Cleaned JSON + job description → JD analysis → GitHub repo ranker → CV HTML → review/polish (polished HTML adopted when valid) → cover letter HTML → LaTeX → PDF
+3. **Generate** (`/api/generate`): Validated candidate JSON + job description → structured optimization → ATS review → Jinja2 LaTeX → PDF
 
 ## Key Design Decisions
 - **OpenRouter via litellm**: CrewAI `LLM(model="openrouter/nvidia/nemotron-3-ultra-550b-a55b:free")`. A `litellm.completion` patch strips unsupported `cache_control`/`tools` params for the free tier. Requires `OPENROUTER_API_KEY` in `backend/.env`.
-- **LaTeX-only compilation**: `run_compilation` converts agent HTML → LaTeX (`html_to_latex`, BeautifulSoup) → `pdflatex`. No HTML-to-PDF fallback. `PDFLATEX_PATH` env var overrides binary lookup.
-- **Deterministic section enforcer**: After LLM HTML generation (and again after review polish), `_enforce_complete_resume_sections` re-injects the verified contact header and guarantees Summary/Skills/Projects/Education sections.
+- **Deterministic rendering**: CrewAI returns validated Pydantic models; `renderers/latex.py` injects them into Jinja2 templates before `pdflatex`. No LLM-generated markup is accepted.
 - **Pipeline split**: Frontend calls extract → clean → generate separately. Generate accepts pre-cleaned JSON (no re-extraction).
 - **Path traversal prevention**: Filenames validated with regex `^[\w\-]+\.pdf$` before serving.
 
@@ -90,4 +89,13 @@ backend/
 - CrewAI telemetry/tracing disabled (`CREWAI_TELEMETRY_OPT_OUT`, `CREWAI_TRACING_ENABLED=false`)
 
 ## Date: 2026-07-25
-## Last Updated: 2026-08-01 (Bug-fix pass: NameErrors, swapped API args, LaTeX-only compilation; repo split into frontend/ + backend/)
+## Last Updated: 2026-08-02 (Observability: backend/observability/* correlation context + JSON event log + Prometheus /metrics + request-id middleware; frontend client sends X-Session-ID)
+
+## Observability
+- `backend/observability/context.py`: `ContextVar`-based request/session/generation/stage correlation, propagated across `asyncio.to_thread`.
+- `backend/observability/events.py`: sanitized JSON pipeline events (`emit_event`, per-generation ring buffer `get_events`, `stage_span` context manager).
+- `backend/observability/metrics.py`: dependency-free Prometheus-style counters/timings registry.
+- `backend/observability/logging.py`: structured JSON `logging.Formatter` (timestamp/level/logger/message + correlation ids).
+- `backend/main.py`: `observability` HTTP middleware assigns request/session ids, emits request events, attaches `X-Request-ID`/`X-Session-ID`/`X-Generation-ID` headers; `/metrics` Prometheus endpoint; `/api/generate` binds `generation_id`.
+- `backend/services/ai_service.py` & `generation_service.py`: `stage_span` around CrewAI tasks and render/compile phases with token-usage events and AI/generation metrics.
+- `frontend/src/api/client.js`: persists a session id across the app and sends it as `X-Session-ID` for end-to-end correlation.

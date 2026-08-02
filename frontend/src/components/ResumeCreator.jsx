@@ -32,6 +32,8 @@ export default function ResumeCreator() {
   const [cvPdfPath, setCvPdfPath] = useState(null);
   const [clPdfPath, setClPdfPath] = useState(null);
   const [atsReport, setAtsReport] = useState(null);
+  const [documentToken, setDocumentToken] = useState(null);
+  const [extractionError, setExtractionError] = useState(null);
 
   const [manualData, setManualData] = useState({
     name: "",
@@ -91,12 +93,14 @@ export default function ResumeCreator() {
   };
 
   const startExtraction = async (file) => {
-    if (extractionInFlight.current) return;
-    extractionInFlight.current = true;
+    const requestId = Symbol("extraction");
+    extractionInFlight.current = requestId;
     setIsExtracting(true);
     setGenerationComplete(false);
     try {
       const data = await extractFile(file);
+      if (extractionInFlight.current !== requestId) return;
+      setExtractionError(null);
       setExtractedText(data.extracted_text);
 
       const serverLinks = data.extracted_links || [];
@@ -107,19 +111,26 @@ export default function ResumeCreator() {
         setUploadPortfolioLinks(combinedLinks);
       }
     } catch (err) {
-      setExtractedText(`[Extraction error: ${err.message}]`);
+      if (extractionInFlight.current === requestId) {
+        setExtractedText("");
+        setExtractionError(err.message);
+      }
     } finally {
-      extractionInFlight.current = false;
-      setIsExtracting(false);
+      if (extractionInFlight.current === requestId) {
+        extractionInFlight.current = false;
+        setIsExtracting(false);
+      }
     }
   };
 
   const clearFile = () => {
     setUploadedFile(null);
     setExtractedText("");
+    setExtractionError(null);
     setGenerationComplete(false);
     setCvPdfPath(null);
     setClPdfPath(null);
+    setDocumentToken(null);
     setAtsReport(null);
     setEnrichmentData([]);
     setCurrentStep(null);
@@ -183,7 +194,8 @@ export default function ResumeCreator() {
     };
   }
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (notesOverride = notes) => {
+    const safeNotes = typeof notesOverride === "string" ? notesOverride : notes;
     setGenerationComplete(false);
     setCvPdfPath(null);
     setClPdfPath(null);
@@ -217,7 +229,7 @@ export default function ResumeCreator() {
       }
 
       // Skip the optional pre-generation ATS gap analysis to reduce latency.
-      await continueDocumentGeneration(cleaned, notes);
+       await continueDocumentGeneration(cleaned, safeNotes);
     } catch (err) {
       console.error("Generation error:", err);
       setStepError(err.message);
@@ -237,8 +249,9 @@ export default function ResumeCreator() {
       setCompletedSteps((prev) => [...prev, "generate"]);
       setCurrentStep("compile");
       if (genData.enrichment_data) setEnrichmentData(genData.enrichment_data);
-      if (genData.cv_pdf) setCvPdfPath(genData.cv_pdf);
-      if (genData.cover_letter_pdf) setClPdfPath(genData.cover_letter_pdf);
+       if (genData.cv_pdf) setCvPdfPath(genData.cv_pdf);
+       if (genData.cover_letter_pdf) setClPdfPath(genData.cover_letter_pdf);
+       setDocumentToken(genData.document_token || null);
       if (genData.ats_report) setAtsReport(genData.ats_report);
       setCompletedSteps((prev) => [...prev, "compile"]);
       setCurrentStep(null);
@@ -255,7 +268,7 @@ export default function ResumeCreator() {
 
   const canGenerate =
     activeMethod === "upload"
-      ? !!uploadedFile && !!extractedText && jobDescription.trim().length > 10
+       ? !!uploadedFile && !!extractedText && !extractionError && jobDescription.trim().length > 10
       : manualData.name.trim() &&
         manualData.experience.trim() &&
         jobDescription.trim().length > 10;
@@ -276,8 +289,9 @@ export default function ResumeCreator() {
       {/* Method toggle */}
       <div className="flex justify-center mb-8">
         <div className="inline-flex bg-white/[0.03] rounded-full p-1 border border-white/[0.06]">
-          <button
-            onClick={() => { setActiveMethod("upload"); setGenerationComplete(false); }}
+            <button
+              onClick={() => { setActiveMethod("upload"); setGenerationComplete(false); }}
+              aria-pressed={activeMethod === "upload"}
             className={`px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
               activeMethod === "upload"
                 ? "bg-accent/15 text-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
@@ -287,8 +301,9 @@ export default function ResumeCreator() {
             <Upload size={14} className="inline mr-1.5" />
             Upload Existing CV
           </button>
-          <button
-            onClick={() => { setActiveMethod("manual"); setGenerationComplete(false); }}
+            <button
+              onClick={() => { setActiveMethod("manual"); setGenerationComplete(false); }}
+              aria-pressed={activeMethod === "manual"}
             className={`px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
               activeMethod === "manual"
                 ? "bg-accent/15 text-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
@@ -312,6 +327,7 @@ export default function ResumeCreator() {
             <button
               key={opt.key}
               onClick={() => { setOutputType(opt.key); setGenerationComplete(false); }}
+              aria-pressed={outputType === opt.key}
               className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
                 outputType === opt.key
                   ? "bg-accent/15 text-accent"
@@ -564,7 +580,7 @@ export default function ResumeCreator() {
       {/* Generate button */}
       <div className="flex flex-col items-center mb-10">
         <button
-          onClick={handleGenerate}
+          onClick={() => handleGenerate()}
           disabled={!canGenerate || isGenerating}
           className={`
             press-feedback inline-flex items-center gap-2.5 px-10 py-4 rounded-full
@@ -593,10 +609,11 @@ export default function ResumeCreator() {
           clPdfPath={clPdfPath}
           outputLabel={outputLabel}
           atsReport={atsReport}
+          documentToken={documentToken}
           onRecalibrate={(gapAnswer) => {
             const updatedNotes = notes ? `${notes}\nCandidate Note: ${gapAnswer}` : `Candidate Note: ${gapAnswer}`;
             setNotes(updatedNotes);
-            handleGenerate();
+            handleGenerate(updatedNotes);
           }}
         />
       )}

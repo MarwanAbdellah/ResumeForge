@@ -1,0 +1,17 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\pagestyle{empty}
+\begin{document}
+{{ candidate.name|latex }}\\
+{{ candidate.email|latex }}{% if candidate.phone %} | {{ candidate.phone|latex }}{% endif %}
+\vspace{1em}
+{{ letter.recipient|latex }}
+\vspace{1em}
+{{ letter.salutation|latex }}
+\vspace{1em}
+{% for paragraph in letter.paragraphs %}{{ paragraph|latex }}
+\vspace{1em}
+{% endfor %}
+{{ letter.signoff|latex }}
+\end{document}

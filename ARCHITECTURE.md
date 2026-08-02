@@ -57,7 +57,7 @@ ResumeForge is a full-stack, AI-powered resume and cover letter generation platf
 │     │                                                              │
 │     ▼                                                              │
 │  ┌──────────────────────────────────────┐                         │
-│  │  pdflatex (HTML → LaTeX → PDF)       │                         │
+│  │  Jinja2 LaTeX → pdflatex → PDF        │                         │
 │  │  output/cv_*.pdf                     │                         │
 │  │  output/cover_letter_*.pdf           │                         │
 │  └──────────────────────────────────────┘                         │
@@ -82,8 +82,8 @@ ResumeForge is a full-stack, AI-powered resume and cover letter generation platf
 | **LLM** | OpenRouter (litellm) | — | `nvidia/nemotron-3-ultra-550b-a55b:free` |
 | **PDF Extraction** | pdfplumber | 0.11.x | PDF text + hyperlink extraction |
 | **DOCX Extraction** | python-docx | 1.1.x | Word document text extraction |
-| **PDF Generation** | pdflatex (MiKTeX/TeX Live) | — | HTML → LaTeX → PDF compilation |
-| **HTML Parsing** | BeautifulSoup4 | 4.12.x | HTML → LaTeX conversion |
+| **PDF Generation** | pdflatex (MiKTeX/TeX Live) | — | Jinja2 LaTeX → PDF compilation |
+| **Structured Rendering** | Jinja2 + Pydantic | — | Validated JSON → deterministic LaTeX |
 | **Validation** | Pydantic | 2.0.x | Request/response schemas |
 | **Backend Testing** | pytest + httpx | 8.0.x / 0.27.x | API and unit tests |
 | **Containerization** | Docker | — | Backend deployment image |
@@ -330,10 +330,10 @@ The pipeline orchestrates 7 agents in a sequential flow:
 | 1 | Extraction | Extract raw text from CV files | No | pdfplumber, python-docx |
 | 2 | Structuring & Enrichment | Parse raw text → normalized JSON | Yes | — |
 | 3 | Job Description Analyst | Extract keywords, skills, strategy from JD | Yes | — |
-| 4 | ATS Resume Generator | Generate ATS-optimized HTML CV | Yes | HTML template |
-| 5 | Review & Polish | Score, fix hallucinations, polish CV | Yes | — |
-| 6 | Cover Letter Writer | Generate tailored HTML cover letter | Yes | HTML template |
-| 7 | PDF Compilation | Convert HTML → LaTeX → PDF | No | pdflatex, BeautifulSoup4 |
+| 4 | Resume Optimization | Tailor validated resume content to the JD | Yes | — |
+| 5 | ATS Review | Score structured resume against requirements | Yes | — |
+| 6 | Cover Letter Writer | Generate structured cover-letter JSON | Yes | — |
+| 7 | PDF Rendering | Render validated models through Jinja2 LaTeX | No | pdflatex |
 
 **All LLM agents** share the same CrewAI `LLM` instance configured with:
 - Model: `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free` (litellm)
@@ -346,11 +346,10 @@ The pipeline orchestrates 7 agents in a sequential flow:
 | Function | Purpose |
 |---|---|
 | `_extract_json(raw)` | Parse JSON from LLM output, strip markdown fences, fix truncated JSON |
-| `_extract_html(raw)` | Extract complete HTML from LLM output |
-| `_normalize_phone_numbers(html)` | Post-process phone numbers to (+CC) format |
-| `_run_agent_task(agent, desc, output, label)` | Run a single CrewAI task |
-| `_run_agent_task_with_json(...)` | Run task + parse JSON with retry logic (up to 3 attempts) |
-| `_get_crew_output(result)` | Extract raw text from CrewAI result object |
+| `AIService.run(...)` | Run one YAML-configured typed CrewAI task |
+| `render_resume(candidate)` | Render a validated candidate with Jinja2 |
+| `render_cover_letter(letter, candidate)` | Render validated cover-letter data |
+| `DocumentService.compile(...)` | Compile deterministic LaTeX with a timeout |
 
 ### 5.3 LLM Configuration (OpenRouter via litellm)
 
@@ -386,16 +385,16 @@ Fetches portfolio URLs (GitHub, HuggingFace, Kaggle, etc.) and returns structure
 - Detects platform from URL domain
 - Returns: `{url, platform, title, description, repos[]}`
 
-### 5.6 HTML Templates
+### 5.6 LaTeX Templates
 
-**CV Template** (`cv_template.html`):
+**CV Template** (`resume.tex.j2`):
 - Single-column, ATS-friendly format
 - A4 page size with 0.6in margins
 - Sections: Contact, Experience, Projects, Education, Skills
 - CSS classes: `.contact`, `.section`, `.entry`, `.entry-header`, `.skills-line`
 - Placeholders: `YOUR_NAME`, `JOB_TITLE_1`, `DATE_RANGE_1`, etc.
 
-**Cover Letter Template** (`cover_letter_template.html`):
+**Cover Letter Template** (`cover_letter.tex.j2`):
 - Formal letter format with sender/recipient blocks
 - A4 page with 1in margins
 - 3-paragraph body structure (intro, fit, closing)
@@ -403,7 +402,7 @@ Fetches portfolio URLs (GitHub, HuggingFace, Kaggle, etc.) and returns structure
 
 ### 5.7 PDF Compilation
 
-Compilation is LaTeX-only: `html_to_latex()` parses the agent HTML with BeautifulSoup and emits a complete LaTeX document (`article` class, A4, `hyperref`/`enumitem`/`xcolor`), which `compile_latex_to_pdf()` renders via the `pdflatex` CLI. The binary is resolved via `PATH` lookup, then the `PDFLATEX_PATH` env var.
+Compilation consumes only validated Pydantic models rendered through Jinja2 LaTeX templates. CrewAI never emits markup. The renderer emits a complete LaTeX document, which `DocumentService` compiles through the configured LaTeX CLI with a bounded timeout.
 Output files are saved to `backend/output/` with names like `cv_{run_id}.pdf` and `cover_letter_{run_id}.pdf` where `run_id` is an 8-character UUID hex.
 
 ---
@@ -417,16 +416,15 @@ Output files are saved to `backend/output/` with names like `cv_{run_id}.pdf` an
 2. Frontend: POST /api/extract (FormData with file)
 3. Backend: extract_text() → pdfplumber/python-docx → raw text
 4. Frontend: POST /api/clean (extracted_text)
-5. Backend: run_structuring() → Agent 2 → structured JSON
+5. Backend: PipelineService.structure() → typed Candidate JSON
 6. Frontend: POST /api/generate (cleaned_data, job_description, output_type, notes)
 7. Backend pipeline:
-   a. Agent 3: run_jd_analysis() → JD insights JSON
-   b. Agent 2: run_structuring() [skipped if already structured]
-   c. Portfolio fetcher: fetch_portfolio_links()
-   d. Agent 4: run_cv_generation() → HTML CV
-   e. Agent 5: run_review_and_polish() → polished HTML + ATS score
-   f. Agent 6: run_cover_letter_generation() → HTML cover letter
-   g. Agent 7: run_compilation() → PDF files
+   a. Job analysis task → typed JobAnalysis
+   b. Portfolio service → verified PortfolioEvidence
+   c. Resume optimization task → typed Resume
+   d. ATS review task → typed ATSReport
+   e. Cover letter task → typed CoverLetter
+   f. Jinja2 renderer + DocumentService → PDF files
 8. Frontend receives: {cv_pdf, cover_letter_pdf, ats_report, cleaned_data}
 9. GenerationResults: preview/download buttons
 10. ATSChecker: POST /api/ats-check for additional ATS analysis
@@ -593,21 +591,21 @@ pytest tests/ -v
 - Provides granular error handling per step
 - Allows the user to review extracted text before generation
 
-### 10.3 HTML Intermediate + LaTeX Compilation
+### 10.3 Structured JSON + LaTeX Compilation
 
-**Decision:** Generate HTML first, convert to LaTeX, then compile to PDF via pdflatex, rather than generating PDF directly.
+**Decision:** Generate validated JSON, render it with Jinja2 LaTeX templates, then compile to PDF via pdflatex.
 
 **Reason:**
-- LLMs are much better at generating HTML than raw PDF or raw LaTeX
-- HTML templates are easy to customize and maintain
+- LLM output remains typed and testable
+- Templates control all layout and formatting
 - pdflatex produces professional, deterministic A4 typesetting with no CSS-engine quirks
 - Single-column format ensures ATS compatibility
 
 ### 10.4 Graceful Review Failure
 
-**Decision:** Agent 5 (Review & Polish) failures are non-fatal — the pipeline continues with the unreviewed HTML.
+**Decision:** Structured stage failures are isolated and repaired or returned as stage-specific errors.
 
-**Reason:** The review step is quality improvement, not a hard requirement. If the review agent fails or returns malformed JSON, the previously generated CV is still usable. This prevents the entire pipeline from failing for a cosmetic step.
+**Reason:** Validation and repair are explicit at each stage, preventing malformed output from reaching the renderer.
 
 ### 10.5 State in InputSection
 
@@ -630,7 +628,7 @@ Each agent's `backstory` and task `description` follow a consistent pattern:
 1. **Role Definition** — Clear statement of what the agent does
 2. **Zero Fabrication Rule** — Explicit instruction not to invent content
 3. **Input Specification** — Exact JSON schema or data format expected
-4. **Output Specification** — Exact JSON schema or HTML format expected
+4. **Output Specification** — Exact Pydantic JSON model expected
 5. **Edge Case Handling** — What to do with empty/missing fields
 6. **Post-Processing** — Phone normalization, URL handling, date formatting
 
@@ -651,9 +649,9 @@ The structuring agent is the most constrained: it must parse raw text without ad
 
 - HTTP exceptions: raised with specific status codes (400, 413, 404, 500)
 - CrewAI failures: caught and re-raised as `RuntimeError` with descriptive messages
-- JSON parse failures: retry up to 3 times with logging
-- Review failures: logged as warnings, pipeline continues without review
-- All 500 errors include `traceback.print_exc()` for server-side debugging
+- Structured-output validation failures: retry only the failed stage with a repair task
+- Renderer failures: stop before compilation and return a generation error
+- Detailed failures are logged server-side without exposing tracebacks to clients
 
 ### 12.3 PDF Compilation
 
@@ -681,8 +679,11 @@ The structuring agent is the most constrained: it must parse raw text without ad
 
 | Variable | Location | Required | Purpose |
 |---|---|---|---|
-| `OPENROUTER_API_KEY` | `backend/.env` | Yes | OpenRouter API authentication |
+| `LLM_MODEL` | `backend/.env` | Yes | Provider/model identifier used by CrewAI |
+| `LLM_API_KEY` | `backend/.env` | Yes | Provider API authentication |
 | `SERPER_API_KEY` | `backend/.env` | Yes | SerperDev web search tool |
+| `DOCUMENT_TOKEN_SECRET` | `backend/.env` | Yes in production | Signed PDF access tokens |
+| `ALLOWED_ORIGINS` | `backend/.env` | Yes in production | Allowed frontend origins |
 | `PDFLATEX_PATH` | `backend/.env` | No | Absolute pdflatex path if not on `PATH` |
 | `CREWAI_TRACING_ENABLED` | `backend/.env` | No | Enable CrewAI tracing logs (default false) |
 | `PORT` | Railway env | No | Backend port (default: 8000) |
@@ -704,7 +705,8 @@ Backend Dependencies:
   crewai → litellm (OpenRouter provider)
   pdfplumber (PDF extraction)
   python-docx (DOCX extraction)
-  beautifulsoup4 (HTML → LaTeX conversion)
+  pyyaml (CrewAI configuration)
+  jinja2 (deterministic LaTeX rendering)
   pdflatex via MiKTeX/TeX Live (PDF compilation, system binary)
   requests (portfolio link fetching)
   python-dotenv (env loading)

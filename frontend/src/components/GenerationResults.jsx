@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CheckCircle, Download, BarChart3, FileText, Mail } from "lucide-react";
 import { getPreviewUrl, getDownloadUrl } from "../api/client";
 
-export default function GenerationResults({ cvPdfPath, clPdfPath, outputLabel, atsReport, onRecalibrate }) {
+export default function GenerationResults({ cvPdfPath, clPdfPath, outputLabel, atsReport, onRecalibrate, documentToken }) {
   const cvFileName = cvPdfPath?.split(/[/\\]/).pop();
   const clFileName = clPdfPath?.split(/[/\\]/).pop();
 
@@ -142,7 +142,7 @@ export default function GenerationResults({ cvPdfPath, clPdfPath, outputLabel, a
         <div className="flex items-center gap-2">
           {cvFileName && (
             <a
-              href={getDownloadUrl(cvFileName)}
+               href={getDownloadUrl(cvFileName, documentToken)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-accent/10 border border-accent/20 rounded-xl text-accent text-xs font-semibold hover:bg-accent/20 transition-all"
             >
               <Download size={13} /> CV PDF
@@ -150,7 +150,7 @@ export default function GenerationResults({ cvPdfPath, clPdfPath, outputLabel, a
           )}
           {clFileName && (
             <a
-              href={getDownloadUrl(clFileName)}
+               href={getDownloadUrl(clFileName, documentToken)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-accent/10 border border-accent/20 rounded-xl text-accent text-xs font-semibold hover:bg-accent/20 transition-all"
             >
               <Download size={13} /> Cover Letter PDF
@@ -163,7 +163,8 @@ export default function GenerationResults({ cvPdfPath, clPdfPath, outputLabel, a
       {activeFileName && (
         <div className="w-full rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-white/[0.02]">
           <iframe
-            src={getPreviewUrl(activeFileName)}
+            src={getPreviewUrl(activeFileName, documentToken)}
+            sandbox="allow-downloads"
             className="w-full h-[720px] rounded-2xl border-0 bg-white"
             title={`${activePreview === "cv" ? "Resume" : "Cover Letter"} PDF Preview`}
           />

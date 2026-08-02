@@ -1,0 +1,21 @@
+extract_resume:
+  description: "Extract factual resume information from this source text. Return JSON only matching the Candidate schema; do not output HTML, CSS, LaTeX, or Markdown.\n{source_text}"
+  expected_output: JSON object matching Candidate, with only source-supported fields.
+structure_resume:
+  description: "Normalize this extracted resume content into the Candidate schema. Return JSON only; do not output HTML, CSS, LaTeX, or Markdown.\n{source_text}"
+  expected_output: JSON object matching Candidate.
+analyze_job:
+  description: "Analyze this job description for requirements and ATS priorities. Return JSON only matching JobAnalysis; do not output HTML, CSS, LaTeX, or Markdown.\n{job_description}"
+  expected_output: JSON object matching JobAnalysis.
+optimize_resume:
+  description: "Tailor this candidate JSON to the analyzed job without adding facts. Return JSON only matching Candidate; do not output HTML, CSS, LaTeX, or Markdown.\n{candidate_json}\n{job_analysis}"
+  expected_output: JSON object matching Candidate.
+generate_cover_letter:
+  description: "Create structured cover-letter content from this candidate and job. Return JSON only matching CoverLetter; do not output HTML, CSS, LaTeX, or Markdown.\n{candidate_json}\n{job_description}"
+  expected_output: JSON object matching CoverLetter.
+review_ats:
+  description: "Review this candidate JSON against the job requirements. Return JSON only matching ATSReport; do not output HTML, CSS, LaTeX, or Markdown.\n{candidate_json}\n{job_analysis}"
+  expected_output: JSON object matching ATSReport.
+analyze_portfolio:
+  description: "Summarize only verified portfolio evidence. Return JSON only matching PortfolioEvidence; do not output HTML, CSS, LaTeX, or Markdown.\n{portfolio_data}"
+  expected_output: JSON object matching PortfolioEvidence.

@@ -9,6 +9,7 @@ import logging
 import urllib.request
 import urllib.error
 from html.parser import HTMLParser
+from security import validate_public_https_url
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,11 @@ def search_serper_web(query: str, max_results: int = 5) -> list[dict]:
 
 def _fetch_html(url: str, timeout: int = 8) -> str:
     """Fetch raw HTML from a URL with a browser-like User-Agent."""
+    try:
+        url = validate_public_https_url(url)
+    except ValueError as exc:
+        logger.warning("Blocked unsafe URL: %s (%s)", url, exc)
+        return ""
     req = urllib.request.Request(
         url,
         headers={
@@ -76,7 +82,10 @@ def _fetch_html(url: str, timeout: int = 8) -> str:
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = resp.read()
+            data = resp.read(2 * 1024 * 1024 + 1)
+            if len(data) > 2 * 1024 * 1024:
+                logger.warning("Rejected oversized response from %s", url)
+                return ""
             try:
                 return data.decode("utf-8")
             except UnicodeDecodeError:
@@ -88,6 +97,11 @@ def _fetch_html(url: str, timeout: int = 8) -> str:
 
 def _fetch_json(url: str, timeout: int = 8) -> dict | list | None:
     """Fetch JSON from a URL (used for GitHub API)."""
+    try:
+        url = validate_public_https_url(url, {"api.github.com"})
+    except ValueError as exc:
+        logger.warning("Blocked unsafe API URL: %s (%s)", url, exc)
+        return None
     req = urllib.request.Request(
         url,
         headers={
@@ -97,7 +111,10 @@ def _fetch_json(url: str, timeout: int = 8) -> dict | list | None:
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            data = resp.read(2 * 1024 * 1024 + 1)
+            if len(data) > 2 * 1024 * 1024:
+                return None
+            return json.loads(data.decode("utf-8"))
     except Exception as e:
         logger.warning(f"Failed to fetch JSON from {url}: {e}")
         return None

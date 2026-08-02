@@ -17,7 +17,7 @@
 - **Agent 2: Candidate Profiler & Normalizer** — Normalizes profile data, separates spoken languages from programming languages, and enriches candidate details.
 - **Agent 3: Job Description Analyst** — Extracts required skills, ATS keywords, technical stack, and responsibilities.
 - **Portfolio GitHub Ranker** — Generic Term-Frequency (TF-IDF) overlap algorithm that scores and ranks all candidate public repositories and README excerpts for target job tasks.
-- **Agent 4: ATS CV Generator** — Generates single-column Harshibar HTML resumes with left-aligned Experience & Education headers.
+- **Resume Optimization Agent** — Produces validated, job-tailored resume content without fabricating candidate facts.
 - **Agent 5: Reviewer & Polish Specialist** — Conducts automated ATS compatibility audits, scoring resumes (0–100) with detailed strengths and actionable suggestions.
 - **Agent 6: Cover Letter Specialist** — Crafts non-fabricated, tailored cover letters adhering strictly to true candidate qualifications.
 - **Agent 7: PDF Compiler** — Sanitizes CSS and compiles production-grade A4 PDF documents.
@@ -69,7 +69,7 @@ graph TD
 - **AI Agent Orchestration**: CrewAI 1.15.9 & LiteLLM
 - **LLM Engine**: OpenRouter `nvidia/nemotron-3-ultra-550b-a55b:free` (free tier)
 - **Web Search**: SerperDevTool (`serper_web_search`)
-- **PDF Generation**: LaTeX (`pdflatex`) — agent HTML is converted to LaTeX and compiled to A4 PDF
+- **PDF Generation**: Validated Pydantic JSON → Jinja2 LaTeX templates → `pdflatex` compiled to A4 PDF
 - **Testing**: `pytest` & `unittest.mock`
 
 ### Frontend
@@ -156,7 +156,7 @@ ResumeForge/
 ├── backend/
 │   ├── crew.py                # 7-Agent CrewAI Swarm & GitHub Repo Ranker
 │   ├── main.py                # FastAPI REST API endpoints
-│   ├── templates/             # Harshibar HTML/CSS resume templates
+│   ├── templates/             # Deterministic Jinja2 LaTeX templates
 │   ├── tools/                 # Link fetchers, extractors & SerperDev tools
 │   └── tests/                 # Backend pytest suite
 ├── frontend/

@@ -52,6 +52,7 @@ export default function FeatureSection() {
                 <button
                   key={f.key}
                   onClick={() => setActiveFeature(f.key)}
+                  aria-pressed={isActive}
                   className={`
                     px-6 py-2.5 rounded-full text-sm font-medium transition-all duration-200
                     ${isActive

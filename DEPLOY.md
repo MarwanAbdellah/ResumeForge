@@ -20,10 +20,13 @@ Vercel serverless functions have tight timeout and memory limits that make AI-po
 2. Go to [railway.app](https://railway.app) → Sign in with GitHub
 3. Click **"New Project"** → **"Deploy from GitHub repo"**
 4. Select your repo
-5. Railway will detect the `Dockerfile` in `backend/` (texlive for pdflatex is installed in the image)
+5. Railway uses `backend/` as the Docker build root (texlive for pdflatex is installed in the image)
 6. Add environment variables:
-   - `OPENROUTER_API_KEY` = your OpenRouter API key
-   - `SERPER_API_KEY` = your Serper.dev API key
+    - `LLM_MODEL` = your LiteLLM provider/model name
+    - `LLM_API_KEY` = your provider API key
+    - `SERPER_API_KEY` = your Serper.dev API key
+    - `DOCUMENT_TOKEN_SECRET` = a long random secret
+    - `ALLOWED_ORIGINS` = your Vercel frontend origin
    - `CREWAI_TRACING_ENABLED` = `false`
 7. Click **Deploy**
 8. Once deployed, copy the Railway URL (e.g., `https://your-app.up.railway.app`)
@@ -36,7 +39,7 @@ Vercel serverless functions have tight timeout and memory limits that make AI-po
 3. Set the **Root Directory** to `frontend` (the `frontend/vercel.json` config is picked up automatically)
 4. Set environment variable:
    - `VITE_API_URL` = `https://your-app.up.railway.app` (your Railway URL)
-5. Update `frontend/vercel.json` — replace `YOUR_BACKEND_URL.railway.app` with your actual Railway URL
+5. Set `VITE_API_URL` to the actual Railway URL. The Vercel rewrite is only a fallback for deployments that retain the configured backend destination.
 6. Click **Deploy**
 7. Your app is live at `https://your-app.vercel.app`
 

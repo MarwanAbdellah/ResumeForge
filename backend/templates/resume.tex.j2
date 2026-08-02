@@ -1,0 +1,43 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=0.5in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\pagestyle{empty}
+\begin{document}
+\begin{center}
+{\LARGE \textbf{ {{ candidate.name|latex }} }}\\
+{{ candidate.email|latex }}{% if candidate.phone %} | {{ candidate.phone|latex }}{% endif %}{% if candidate.location %} | {{ candidate.location|latex }}{% endif %}
+\end{center}
+\hrule
+{% if candidate.summary %}\section*{Summary}
+{{ candidate.summary|latex }}
+{% endif %}
+{% if candidate.experience %}\section*{Experience}
+{% for item in candidate.experience %}\textbf{ {{ item.title|latex }} }{% if item.company %} | {{ item.company|latex }}{% endif %}\\
+{{ item.location|latex }}{% if item.dates %} \hfill {{ item.dates|latex }}{% endif %}
+\begin{itemize}[leftmargin=1.5em]
+{% for bullet in item.bullets %}\item {{ bullet|latex }}
+{% endfor %}\end{itemize}
+{% endfor %}{% endif %}
+{% if candidate.projects %}\section*{Projects}
+{% for item in candidate.projects %}\textbf{ {{ item.name|latex }} }{% if item.url %} \href{ {{ item.url|latex_url }} }{\texttt{ {{ item.url|latex }} }}{% endif %}
+{% if item.description %}{{ item.description|latex }}{% endif %}
+\begin{itemize}[leftmargin=1.5em]
+{% for bullet in item.bullets %}\item {{ bullet|latex }}
+{% endfor %}\end{itemize}
+{% endfor %}{% endif %}
+{% if candidate.certifications %}\section*{Certifications}
+{% for item in candidate.certifications %}\textbf{ {{ item.name|latex }} }{% if item.issuer %} | {{ item.issuer|latex }}{% endif %}{% if item.date %} | {{ item.date|latex }}{% endif %}\\
+{% endfor %}{% endif %}
+{% if candidate.languages %}\section*{Languages}
+{% for item in candidate.languages %}{{ item.name|latex }}{% if item.proficiency %} ({{ item.proficiency|latex }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+{% endif %}
+{% if candidate.education %}\section*{Education}
+{% for item in candidate.education %}\textbf{ {{ (item.degree ~ ' ' ~ item.field)|trim|latex }} } | {{ (item.school or item.institution)|latex }}{% if item.dates %} \hfill {{ item.dates|latex }}{% endif %}\\
+{{ item.details|latex }}
+{% endfor %}{% endif %}
+{% if candidate.skills %}\section*{Skills}
+{% for item in candidate.skills %}{{ item.name|latex }}{% if item.category %} ({{ item.category|latex }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+{% endif %}
+\end{document}
