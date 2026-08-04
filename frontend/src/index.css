@@ -116,6 +116,54 @@ body {
   -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
 
+/* ── Scroll navbar morph ─────────────────────────────────── */
+.nav-actions {
+  position: relative;
+  min-width: 218px;
+  height: 24px;
+}
+
+.nav-links {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2rem;
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  transform-origin: right center;
+  transition: opacity 220ms var(--ease-out), transform 300ms var(--ease-out);
+}
+
+.nav-links-scrolled {
+  opacity: 0;
+  transform: translateX(10px) scale(0.94);
+  pointer-events: none;
+}
+
+.menu-trigger {
+  opacity: 0;
+  transform: translateX(8px) scale(0.8);
+  pointer-events: none;
+  transition: opacity 180ms var(--ease-out), transform 300ms var(--ease-out), color 200ms ease;
+}
+
+.menu-trigger-scrolled {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
+  transition-delay: 110ms;
+}
+
+@media (max-width: 767px) {
+  .menu-trigger {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+
 /* ── Reduced motion ─────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .hero-entrance,

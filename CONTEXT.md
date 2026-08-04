@@ -99,3 +99,13 @@ backend/
 - `backend/main.py`: `observability` HTTP middleware assigns request/session ids, emits request events, attaches `X-Request-ID`/`X-Session-ID`/`X-Generation-ID` headers; `/metrics` Prometheus endpoint; `/api/generate` binds `generation_id`.
 - `backend/services/ai_service.py` & `generation_service.py`: `stage_span` around CrewAI tasks and render/compile phases with token-usage events and AI/generation metrics.
 - `frontend/src/api/client.js`: persists a session id across the app and sends it as `X-Session-ID` for end-to-end correlation.
+
+## DAG Workflow Architecture
+- `backend/services/dag.py`: dependency-driven `asyncio.TaskGroup` executor. Nodes wait only for their declared futures, validate declared output models, and fail fast on invalid results.
+- `backend/services/generation_service.py`: composes the generation DAG. Candidate validation, job analysis, and ATS keyword extraction run concurrently; discovery workers, resume/cover-letter generation, reviews, and rendering fan out at dependency boundaries.
+- `backend/models/pipeline.py`: typed `ATSKeywordModel`, `EvidenceChunk`, `CandidateEvidenceModel`, `ResumeModel`, `CoverLetterReviewModel`, and immutable `GenerationContextModel`.
+- `backend/services/context_builder.py`: composes validated upstream models without mutating `Candidate`.
+- `backend/retrieval/`: registered deterministic discovery workers and concurrent `DiscoveryCoordinator`; current workers are GitHub and generic portfolio.
+- `backend/observability/bus.py` and `sinks.py`: centralized typed `PipelineEventBus` with JSON logging, ring-buffer, metrics, and optional CLI timeline sinks.
+- `GET /api/events/{generation_id}` exposes the read-only in-memory execution timeline.
+- CrewAI remains isolated to reasoning tasks. Retrieval, validation, rendering, compilation, storage, and orchestration are Python services.

@@ -4,7 +4,9 @@ const localHost = typeof window !== "undefined" && window.location.hostname === 
   ? window.location.hostname
   : "127.0.0.1";
 const API_URL = import.meta.env.VITE_API_URL || `${typeof window !== "undefined" ? window.location.protocol : "http:"}//${localHost}:8000`;
-const REQUEST_TIMEOUT_MS = 120000;
+// CrewAI calls can exceed two minutes on slower/free-tier providers. Keep the
+// client timeout configurable while allowing the backend enough time to finish.
+const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 300000);
 
 const sessionId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
   ? crypto.randomUUID()
@@ -71,13 +73,14 @@ export async function generateDocuments(cleanedData, jobDescription, outputType,
   return res.json();
 }
 
-export async function checkAtsMatch(enrichedData, jobDescription) {
+export async function checkAtsMatch(enrichedData, jobDescription, portfolioLinks = []) {
   const res = await request(`${API_URL}/api/ats-check`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       job_description: jobDescription,
       enriched_data: enrichedData,
+      portfolio_links: portfolioLinks,
     }),
   });
   if (!res.ok) {

@@ -2,20 +2,26 @@ extract_resume:
   description: "Extract factual resume information from this source text. Return JSON only matching the Candidate schema; do not output HTML, CSS, LaTeX, or Markdown.\n{source_text}"
   expected_output: JSON object matching Candidate, with only source-supported fields.
 structure_resume:
-  description: "Normalize this extracted resume content into the Candidate schema. Return JSON only; do not output HTML, CSS, LaTeX, or Markdown.\n{source_text}"
+  description: "Normalize this extracted resume content into the Candidate schema. Return one compact JSON object only. Do not include explanations, prose, markdown, HTML, CSS, or LaTeX. Preserve factual details, but omit unsupported optional entries and keep each bullet concise.\n{source_text}"
   expected_output: JSON object matching Candidate.
 analyze_job:
   description: "Analyze this job description for requirements and ATS priorities. Return JSON only matching JobAnalysis; do not output HTML, CSS, LaTeX, or Markdown.\n{job_description}"
   expected_output: JSON object matching JobAnalysis.
-optimize_resume:
-  description: "Tailor this candidate JSON to the analyzed job without adding facts. Return JSON only matching Candidate; do not output HTML, CSS, LaTeX, or Markdown.\n{candidate_json}\n{job_analysis}"
-  expected_output: JSON object matching Candidate.
+extract_ats_keywords:
+  description: "Extract the exact ATS-critical keywords and phrases this job description expects. Return JSON only matching ATSKeywordModel; do not output HTML, CSS, LaTeX, or Markdown.\n{job_description}"
+  expected_output: JSON object matching ATSKeywordModel.
+generate_resume:
+  description: "Produce an optimized, ATS-ready resume JSON grounded ONLY in the provided generation context. You MUST meaningfully tailor the content to the target job - echoing the candidate input back is a failure. Follow the tailoring plan strictly. Rewrite the summary specifically for this job description; it must differ measurably from the original candidate summary (never copy it verbatim). Reorder the skills list so the most job-relevant skills appear first. Produce at least one NEW, tailored bullet per experience entry and per project that connects it to the target role. Surface the most relevant VERIFIED PROJECTS (these are real, verifiable projects) in the projects section with their exact URLs, ordered by relevance to the job. Preserve every URL, date, name, number, and factual claim exactly as provided. Never invent skills, tools, titles, projects, or experience that are not supported by the candidate, the verified evidence, or the tailoring plan's confirmed list - in particular never claim skills listed under must_not_claim. Return JSON only matching ResumeModel; do not output HTML, CSS, LaTeX, Markdown, or commentary.\nCANDIDATE:\n{candidate_json}\nJOB ANALYSIS:\n{job_analysis_json}\nATS KEYWORDS TO INCORPORATE:\n{keywords_json}\nVERIFIED EVIDENCE:\n{evidence_json}\nVERIFIED PROJECTS (deterministic, factual - surface the relevant ones with their exact URLs):\n{verified_projects}\nTAILORING PLAN:\n{tailoring_plan}\nCANDIDATE NOTES:\n{notes}\nECHO GUARD DIFF (only present on a repair retry; address every point):\n{echo_guard_diff}\nVALIDATION ISSUES (only present on a repair retry; fix every point):\n{validation_issues}\nHUMANIZER GENERATION POLICY:\n{humanizer_guidance}"
+  expected_output: JSON object matching ResumeModel.
 generate_cover_letter:
-  description: "Create structured cover-letter content from this candidate and job. Return JSON only matching CoverLetter; do not output HTML, CSS, LaTeX, or Markdown.\n{candidate_json}\n{job_description}"
+  description: "Create structured cover-letter content grounded ONLY in the provided generation context and tailored to the target job. Use the tailoring plan's confirmed and verified_external_evidence lists and the VERIFIED PROJECTS to reference specific projects and skills. Never invent qualifications, projects, or facts. Apply the Humanizer Generation Policy only to paragraph prose. Return JSON only matching CoverLetter; do not output HTML, CSS, LaTeX, Markdown, or commentary.\nCANDIDATE:\n{candidate_json}\nJOB DESCRIPTION:\n{job_description}\nATS KEYWORDS:\n{keywords_json}\nVERIFIED EVIDENCE:\n{evidence_json}\nVERIFIED PROJECTS (deterministic, factual):\n{verified_projects}\nTAILORING PLAN:\n{tailoring_plan}\nHUMANIZER GENERATION POLICY:\n{humanizer_guidance}"
   expected_output: JSON object matching CoverLetter.
 review_ats:
-  description: "Review this candidate JSON against the job requirements. Return JSON only matching ATSReport; do not output HTML, CSS, LaTeX, or Markdown.\n{candidate_json}\n{job_analysis}"
+  description: "Review this generated resume JSON against the analyzed job requirements and the verified external evidence. Evaluate fit to the role, not the resume in isolation. Score keyword coverage against the candidate's combined resume and verified evidence. Return JSON only matching ATSReport; do not output HTML, CSS, LaTeX, or Markdown. inquiry_questions must be an array of objects, each with a 'keyword' string and a 'question' string.\nRESUME:\n{resume_json}\nJOB ANALYSIS:\n{job_analysis_json}\nVERIFIED EVIDENCE:\n{evidence_json}"
   expected_output: JSON object matching ATSReport.
+review_cover_letter:
+  description: "Review this cover letter for alignment with the target position and its requirements. Verify it addresses the role's needs and tone, not just writing quality. Return JSON only matching CoverLetterReviewModel; do not output HTML, CSS, LaTeX, or Markdown.\nCOVER LETTER:\n{cover_letter_json}\nCANDIDATE:\n{candidate_json}\nJOB ANALYSIS:\n{job_analysis_json}"
+  expected_output: JSON object matching CoverLetterReviewModel.
 analyze_portfolio:
   description: "Summarize only verified portfolio evidence. Return JSON only matching PortfolioEvidence; do not output HTML, CSS, LaTeX, or Markdown.\n{portfolio_data}"
   expected_output: JSON object matching PortfolioEvidence.

@@ -5,12 +5,13 @@ import subprocess
 from pathlib import Path
 
 from config.settings import settings
+from storage.local import LocalDocumentStorage
 
 
 class DocumentService:
     def __init__(self, output_dir: Path | None = None):
-        self.output_dir = output_dir or Path(__file__).parent.parent / settings.output_dir
-        self.output_dir.mkdir(exist_ok=True)
+        self.storage = LocalDocumentStorage(output_dir)
+        self.output_dir = self.storage.output_dir
 
     def compiler_candidates(self) -> list[str]:
         configured = os.getenv("LATEX_COMPILER") or os.getenv("PDFLATEX_PATH")
@@ -24,6 +25,8 @@ class DocumentService:
                     [candidate, "--version"],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=10,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
@@ -49,14 +52,24 @@ class DocumentService:
                 ],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=settings.latex_timeout_seconds,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             if result.returncode != 0 or not pdf_path.exists() or pdf_path.stat().st_size == 0:
-                raise RuntimeError((result.stderr or result.stdout or "LaTeX compilation failed")[-1000:])
+                log_path = self.output_dir / f"{output_name}.log"
+                log_tail = ""
+                if log_path.exists():
+                    log_tail = log_path.read_text(encoding="utf-8", errors="replace")[-1500:]
+                stream_tail = (result.stderr or result.stdout or "")[-2000:]
+                raise RuntimeError(
+                    f"LaTeX compilation failed for {output_name}. "
+                    f"Log kept at {log_path.resolve()}.\n"
+                    f"--- compiler output ---\n{stream_tail}\n"
+                    f"--- log tail ---\n{log_tail}"
+                )
             return pdf_path
         finally:
-            for extension in (".aux", ".log", ".out", ".tex"):
-                intermediate = self.output_dir / f"{output_name}{extension}"
-                if intermediate.exists():
-                    intermediate.unlink()
+            success = pdf_path.exists() and pdf_path.stat().st_size > 0
+            self.storage.remove_intermediates(output_name, keep_log=not success)

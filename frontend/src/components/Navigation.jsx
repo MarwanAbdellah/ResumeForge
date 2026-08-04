@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Menu, X } from "lucide-react";
 
 const NAV_LINKS = [
@@ -8,11 +8,26 @@ const NAV_LINKS = [
 
 export default function Navigation() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 50);
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   return (
     <>
       {/* Desktop header */}
-      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-5 md:px-12 lg:px-20">
+      <header
+        className={`fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-5 md:px-12 lg:px-20 transition-all duration-300 ${
+          scrolled
+            ? "bg-dark-bg/70 backdrop-blur-xl"
+            : ""
+        }`}
+      >
         {/* Logo */}
         <a
           href="#"
@@ -22,33 +37,37 @@ export default function Navigation() {
           Resume<span className="text-accent">Forge</span>
         </a>
 
-        {/* Desktop nav */}
-        <nav className="hidden md:flex items-center gap-8">
-          {NAV_LINKS.map((link) => (
-            <a
-              key={link.label}
-              href={link.href}
-              className="text-white/80 text-sm font-medium tracking-wide hover:text-accent transition-colors duration-200"
-              style={{ fontFamily: "Inter, sans-serif" }}
-            >
-              {link.label}
-            </a>
-          ))}
-        </nav>
+        {/* Desktop actions share a slot so the scroll transition does not jump */}
+        <div className="nav-actions hidden md:block">
+          <nav className={`nav-links ${scrolled ? "nav-links-scrolled" : ""}`}>
+            {NAV_LINKS.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                className="text-white/80 text-sm font-medium tracking-wide hover:text-accent transition-colors duration-200"
+                style={{ fontFamily: "Inter, sans-serif" }}
+              >
+                {link.label}
+              </a>
+            ))}
+          </nav>
+        </div>
 
-        {/* Mobile hamburger — Apple: respond on pointer-down */}
+        {/* Hamburger — visible on mobile always, desktop after the links leave */}
         <button
           onClick={() => setMobileOpen(true)}
-          className="press-feedback md:hidden text-white hover:text-accent transition-colors duration-200"
+          className={`menu-trigger press-feedback text-white hover:text-accent transition-colors duration-200 md:absolute md:right-6 lg:right-20 ${
+            scrolled ? "menu-trigger-scrolled" : ""
+          }`}
           aria-label="Open menu"
         >
           <Menu size={24} />
         </button>
       </header>
 
-      {/* Mobile full-screen overlay — Apple: spatial animation + translucent material */}
+      {/* Full-screen overlay — Apple: spatial animation + translucent material */}
       <div
-        className={`fixed inset-0 z-[60] mobile-menu-backdrop bg-dark-bg/80 flex flex-col items-center justify-center gap-8 transition-[opacity,transform] duration-300 md:hidden ${
+        className={`fixed inset-0 z-[60] mobile-menu-backdrop bg-dark-bg/80 flex flex-col items-center justify-center gap-8 transition-[opacity,transform] duration-300 ${
           mobileOpen
             ? "opacity-100 pointer-events-auto scale-100"
             : "opacity-0 pointer-events-none scale-95"

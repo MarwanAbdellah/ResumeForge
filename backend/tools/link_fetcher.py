@@ -221,8 +221,9 @@ def _fetch_github_profile_repos(username: str) -> list[dict]:
     return repos[:MAX_REPOS]
 
 
-def _fetch_github_repo_readme(full_name: str) -> str:
-    """Fetch the first MAX_README_CHARS chars of a repo's README via GitHub API."""
+def _fetch_github_repo_readme(full_name: str, max_chars: int | None = None) -> str:
+    """Fetch the first ``max_chars`` chars of a repo's README via GitHub API."""
+    max_chars = max_chars or MAX_README_CHARS
     data = _fetch_json(f"{GITHUB_API}/repos/{full_name}/readme")
     if not isinstance(data, dict):
         return ""
@@ -235,9 +236,21 @@ def _fetch_github_repo_readme(full_name: str) -> str:
         content = re.sub(r"#{1,6}\s+", "", content)
         content = re.sub(r"```[\s\S]*?```", "", content)
         content = re.sub(r"\n{3,}", "\n\n", content)
-        return content[:MAX_README_CHARS].strip()
+        return content[:max_chars].strip()
     except Exception:
         return ""
+
+
+def extract_urls_from_text(text: str) -> list[str]:
+    """Pull HTTP(S) URLs out of arbitrary text (e.g. a README)."""
+    if not text:
+        return []
+    urls = []
+    for match in re.findall(r"https?://[^\s<>\"')]+", text):
+        clean = match.rstrip(".,;)\"']")
+        if clean.startswith("http") and clean not in urls:
+            urls.append(clean)
+    return urls
 
 
 def _fetch_github_user_info(username: str) -> dict:
@@ -358,6 +371,72 @@ def _extract_title_from_url(url: str) -> str:
     return path.replace("-", " ").replace("_", " ").title() if path else url
 
 
+# ══════════════════════════════════════════════════════════
+#  KAGGLE SEARCH-BACKED ENRICHMENT
+#  Kaggle profile pages are JS-rendered, so meta tags are thin.
+#  When that happens we fall back to a Serper web search for
+#  the user's notebooks/datasets and extract titles + links.
+# ══════════════════════════════════════════════════════════
+
+def _extract_kaggle_username(url: str) -> str:
+    """Extract the Kaggle username from https://kaggle.com/<username>."""
+    url = url.rstrip("/")
+    match = re.match(r"https?://(?:www\.)?kaggle\.com/([^/?#]+)", url, re.IGNORECASE)
+    return match.group(1) if match else ""
+
+
+TECHNOLOGY_HINTS = {
+    "python": "Python", "pandas": "Pandas", "numpy": "NumPy",
+    "tensorflow": "TensorFlow", "keras": "Keras", "pytorch": "PyTorch",
+    "scikit": "scikit-learn", "sklearn": "scikit-learn", "xgboost": "XGBoost",
+    "lightgbm": "LightGBM", "sql": "SQL", "r language": "R", " r ": "R",
+    "jupyter": "Jupyter", "notebook": "Jupyter", "spark": "PySpark",
+    "pyspark": "PySpark", "nlp": "NLP", "llm": "LLM", "bert": "BERT",
+    "transformer": "Transformers", "huggingface": "Hugging Face",
+    "tableau": "Tableau", "power bi": "Power BI", "dashboard": "Dashboards",
+    "visualization": "Data Visualization", "matplotlib": "Matplotlib",
+    "seaborn": "Seaborn", "plotly": "Plotly", "excel": "Excel",
+    "eda": "EDA", "classification": "Classification",
+    "regression": "Regression", "time series": "Time Series",
+    "computer vision": "Computer Vision", "cv": "Computer Vision",
+    "deep learning": "Deep Learning", "ml": "Machine Learning",
+    "machine learning": "Machine Learning", "data analysis": "Data Analysis",
+    "analytics": "Analytics", "preprocessing": "Data Preprocessing",
+    "feature engineering": "Feature Engineering", "pipeline": "Pipelines",
+}
+
+
+def infer_technologies(text: str) -> list[str]:
+    """Infer likely technologies from a title/snippet via keyword hints."""
+    lower = f" {text.lower()} "
+    found = []
+    for hint, tech in TECHNOLOGY_HINTS.items():
+        if hint in lower and tech not in found:
+            found.append(tech)
+    return found
+
+
+def _search_kaggle_profile(username: str, max_results: int = 6) -> list[dict]:
+    """Serper search for a user's Kaggle notebooks/datasets."""
+    if not username:
+        return []
+    results = search_serper_web(f"site:kaggle.com {username}", max_results=max_results)
+    entries = []
+    for item in results:
+        link = item.get("link", "")
+        title = item.get("title", "").replace(" - Kaggle", "").replace(" | Kaggle", "").strip()
+        if not title or not link:
+            continue
+        entries.append({
+            "title": title,
+            "url": link,
+            "summary": item.get("snippet", ""),
+            "platform": "kaggle",
+            "technologies": infer_technologies(f"{title} {item.get('snippet', '')}"),
+        })
+    return entries
+
+
 def _enrich_generic(url: str, platform: str) -> dict:
     """Generic enrichment for Kaggle, HuggingFace, portfolio sites."""
     # LinkedIn blocks scrapers with HTTP 999 — return clean link object without scraping attempt
@@ -374,21 +453,44 @@ def _enrich_generic(url: str, platform: str) -> dict:
     logger.info(f"[Enrichment] Fetching {platform}: {url}")
     html = _fetch_html(url)
     if not html:
-        return {
+        entry = {
             "url": url,
             "platform": platform,
             "title": _extract_title_from_url(url),
             "description": "",
             "repos": [],
         }
-    meta = _extract_meta(html)
-    return {
-        "url": url,
-        "platform": platform,
-        "title": meta["title"] or _extract_title_from_url(url),
-        "description": meta["description"][:400] if meta["description"] else "",
-        "repos": [],
-    }
+    else:
+        meta = _extract_meta(html)
+        entry = {
+            "url": url,
+            "platform": platform,
+            "title": meta["title"] or _extract_title_from_url(url),
+            "description": meta["description"][:400] if meta["description"] else "",
+            "repos": [],
+        }
+
+    # Kaggle profile pages are JS-rendered: when meta is thin, back-fill with
+    # a Serper search for the user's notebooks and datasets.
+    if platform == "kaggle":
+        username = _extract_kaggle_username(url)
+        entry["kaggle_username"] = username
+        thin = not entry.get("description") or len(entry["description"]) < 80
+        if thin:
+            search_results = _search_kaggle_profile(username)
+            if search_results:
+                entry["search_results"] = search_results
+                entry["description"] = (
+                    entry["description"]
+                    or f"Kaggle profile for {username} ({len(search_results)} public notebooks/datasets found via search)."
+                )
+                entry["technologies"] = list({
+                    tech
+                    for item in search_results
+                    for tech in item.get("technologies", [])
+                })
+
+    return entry
 
 
 # ══════════════════════════════════════════════════════════

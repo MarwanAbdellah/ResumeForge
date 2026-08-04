@@ -7,6 +7,7 @@ from .schemas import (
     CoverLetter,
     Education,
     Experience,
+    InquiryQuestion,
     JobAnalysis,
     JobDescription,
     Language,
@@ -16,9 +17,28 @@ from .schemas import (
     SectionFeedback,
     Skill,
 )
+from .pipeline import (
+    ATSKeywordModel,
+    CandidateEvidenceModel,
+    CoverLetterReviewModel,
+    EvidenceChunk,
+    GenerationContextModel,
+    ResumeModel,
+    SourceStatus,
+)
+from .api import (
+    ATSCheckRequest,
+    AnalyzeRequest,
+    CleanRequest,
+    GapInquireRequest,
+    GenerateRequest,
+)
 
 __all__ = [
     "ATSAction", "ATSReport", "Achievement", "Candidate", "Certification",
-    "CoverLetter", "Education", "Experience", "JobAnalysis", "JobDescription",
+    "CoverLetter", "Education", "Experience", "InquiryQuestion", "JobAnalysis", "JobDescription",
     "Language", "PortfolioEvidence", "Project", "Resume", "SectionFeedback", "Skill",
+    "ATSKeywordModel", "CandidateEvidenceModel", "CoverLetterReviewModel",
+    "EvidenceChunk", "GenerationContextModel", "ResumeModel", "SourceStatus",
+    "ATSCheckRequest", "AnalyzeRequest", "CleanRequest", "GapInquireRequest", "GenerateRequest",
 ]

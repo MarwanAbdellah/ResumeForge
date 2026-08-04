@@ -51,7 +51,19 @@ function formatDuration(seconds) {
   return `${minutes}:${remainder}`;
 }
 
-export default function ProgressTracker({ currentStep, completedSteps, error, enrichmentData = [] }) {
+const SOURCE_STATUS_META = {
+  ok: { label: "fetched", classes: "bg-green-500/10 border-green-500/20 text-green-400" },
+  error: { label: "failed", classes: "bg-red-500/10 border-red-500/20 text-red-400" },
+  skipped: { label: "skipped", classes: "bg-white/[0.03] border-white/10 text-white/40" },
+};
+
+function sourceDisplayName(worker) {
+  if (worker === "github") return "GitHub";
+  if (worker === "portfolio") return "Portfolio";
+  return worker;
+}
+
+export default function ProgressTracker({ currentStep, completedSteps, error, enrichmentData = [], sourceStatus = [] }) {
   const [linkIndex, setLinkIndex] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [stepDurations, setStepDurations] = useState({});
@@ -174,6 +186,33 @@ export default function ProgressTracker({ currentStep, completedSteps, error, en
               ))}
             </div>
           ))}
+        </div>
+      )}
+
+      {sourceStatus.length > 0 && (
+        <div className="ml-10 mt-2 rounded-lg border border-white/[0.08] bg-white/[0.02] p-3 space-y-2">
+          <p className="text-[11px] text-white/50 font-semibold uppercase tracking-wider">
+            Source status
+          </p>
+          {sourceStatus.map((source, index) => {
+            const meta = SOURCE_STATUS_META[source.status] || SOURCE_STATUS_META.skipped;
+            return (
+              <div key={`${source.worker}-${source.url}-${index}`} className="flex items-start gap-2">
+                <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${meta.classes}`}>
+                  {meta.label}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[11px] text-white/80 font-medium">
+                    {sourceDisplayName(source.worker)}
+                    {source.url ? <span className="text-white/30 font-normal"> · {source.url}</span> : null}
+                  </p>
+                  {source.detail && (
+                    <p className="text-[10px] text-white/45 leading-relaxed break-words">{source.detail}</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

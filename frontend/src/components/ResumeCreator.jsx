@@ -7,9 +7,10 @@ import {
   Sparkles,
   Loader2,
   CheckCircle,
+  AlertTriangle,
 } from "lucide-react";
 
-import { extractFile, cleanExtractedText, generateDocuments } from "../api/client";
+import { extractFile, cleanExtractedText, checkAtsMatch, generateDocuments } from "../api/client";
 import FileUpload from "./FileUpload";
 import ManualForm from "./ManualForm";
 import ProgressTracker from "./ProgressTracker";
@@ -34,6 +35,8 @@ export default function ResumeCreator() {
   const [atsReport, setAtsReport] = useState(null);
   const [documentToken, setDocumentToken] = useState(null);
   const [extractionError, setExtractionError] = useState(null);
+  const [sourceStatus, setSourceStatus] = useState([]);
+  const [extractionSources, setExtractionSources] = useState({});
 
   const [manualData, setManualData] = useState({
     name: "",
@@ -53,9 +56,9 @@ export default function ResumeCreator() {
   const extractionInFlight = useRef(false);
 
   // Pre-generation Agentic AI Candidate Interview states
-  const [preGenInquiry, _setPreGenInquiry] = useState(null);
+  const [preGenInquiry, setPreGenInquiry] = useState(null);
   const [showPreGenInterview, setShowPreGenInterview] = useState(false);
-  const [pendingCleanedData, _setPendingCleanedData] = useState(null);
+  const [pendingCleanedData, setPendingCleanedData] = useState(null);
   const [questionResponses, setQuestionResponses] = useState({});
   const [askSpokenLanguages, _setAskSpokenLanguages] = useState(false);
   const [spokenLanguages, setSpokenLanguages] = useState([{ language: "", proficiency: "" }]);
@@ -109,6 +112,9 @@ export default function ResumeCreator() {
 
       if (combinedLinks.length > 0) {
         setUploadPortfolioLinks(combinedLinks);
+      }
+      if (data.extraction_diagnostics?.sources) {
+        setExtractionSources(data.extraction_diagnostics.sources);
       }
     } catch (err) {
       if (extractionInFlight.current === requestId) {
@@ -194,14 +200,15 @@ export default function ResumeCreator() {
     };
   }
 
-  const handleGenerate = async (notesOverride = notes) => {
-    const safeNotes = typeof notesOverride === "string" ? notesOverride : notes;
+  const handleGenerate = async () => {
     setGenerationComplete(false);
     setCvPdfPath(null);
     setClPdfPath(null);
     setAtsReport(null);
     setStepError(null);
     setCompletedSteps([]);
+    setShowPreGenInterview(false);
+    setPreGenInquiry(null);
 
       try {
       let cleaned;
@@ -225,11 +232,24 @@ export default function ResumeCreator() {
         const cleanData = await cleanExtractedText(text, uploadPortfolioLinks);
         cleaned = cleanData.cleaned_data;
         setEnrichmentData(cleanData.enrichment_data || []);
+        setSourceStatus(cleanData.source_status || []);
         setCompletedSteps((prev) => [...prev, "structure"]);
       }
 
-      // Skip the optional pre-generation ATS gap analysis to reduce latency.
-       await continueDocumentGeneration(cleaned, safeNotes);
+      // Pre-generation interview: run the agentic ATS audit, surface typed
+      // missing-skill questions, and only then continue to generation.
+      const portfolioLinks =
+        activeMethod === "upload" ? uploadPortfolioLinks : (manualData.portfolioLinks || []);
+
+      setCurrentStep("analyze");
+      const report = await checkAtsMatch(cleaned, jobDescription, portfolioLinks);
+      setSourceStatus((prev) => report.source_status || prev);
+      setCompletedSteps((prev) => [...prev, "analyze"]);
+      setCurrentStep(null);
+
+      setPendingCleanedData(cleaned);
+      setPreGenInquiry(report);
+      setShowPreGenInterview(true);
     } catch (err) {
       console.error("Generation error:", err);
       setStepError(err.message);
@@ -252,6 +272,7 @@ export default function ResumeCreator() {
        if (genData.cv_pdf) setCvPdfPath(genData.cv_pdf);
        if (genData.cover_letter_pdf) setClPdfPath(genData.cover_letter_pdf);
        setDocumentToken(genData.document_token || null);
+      if (genData.source_status) setSourceStatus(genData.source_status);
       if (genData.ats_report) setAtsReport(genData.ats_report);
       setCompletedSteps((prev) => [...prev, "compile"]);
       setCurrentStep(null);
@@ -273,16 +294,20 @@ export default function ResumeCreator() {
         manualData.experience.trim() &&
         jobDescription.trim().length > 10;
 
+  const missingSkillQuestions = (preGenInquiry?.inquiry_questions || []).length > 0
+    ? preGenInquiry.inquiry_questions
+    : (preGenInquiry?.missing_keywords || []).map((keyword) => ({ keyword }));
+
+  const needsManualLinks = Object.values(extractionSources).some(
+    (source) => source && source.status === "word_only"
+  );
+
   const outputLabel =
     outputType === "cv"
       ? "CV"
       : outputType === "cover_letter"
       ? "Cover Letter"
       : "Resume & Cover Letter";
-
-  const missingSkillQuestions = (preGenInquiry?.inquiry_questions || []).length > 0
-    ? preGenInquiry.inquiry_questions
-    : (preGenInquiry?.missing_keywords || []).map((keyword) => ({ keyword }));
 
   return (
     <>
@@ -365,6 +390,23 @@ export default function ResumeCreator() {
         )}
       </div>
 
+      {/* Manual-link hint when the CV mentions platforms without real URLs */}
+      {activeMethod === "upload" && needsManualLinks && (
+        <div className="mb-8 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-start gap-3">
+          <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-amber-300 text-sm font-semibold mb-1">
+              Add your GitHub / Kaggle / LinkedIn links below
+            </p>
+            <p className="text-amber-200/70 text-xs leading-relaxed">
+              Your CV mentions GitHub, Kaggle, or LinkedIn but contains no real URLs. Add the
+              links in the &quot;Enrich with Live Profile Data&quot; panel so your projects and
+              profile can be verified and scored.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Notes */}
       {((activeMethod === "upload" && uploadedFile && !isExtracting) ||
         activeMethod === "manual") && (
@@ -398,6 +440,7 @@ export default function ResumeCreator() {
           error={stepError}
           portfolioLinks={activeMethod === "upload" ? uploadPortfolioLinks : (manualData.portfolioLinks ? [manualData.portfolioLinks] : [])}
           enrichmentData={enrichmentData}
+          sourceStatus={sourceStatus}
         />
       )}
 
@@ -581,7 +624,7 @@ export default function ResumeCreator() {
       <div className="flex flex-col items-center mb-10">
         <button
           onClick={() => handleGenerate()}
-          disabled={!canGenerate || isGenerating}
+          disabled={!canGenerate || isGenerating || showPreGenInterview}
           className={`
             press-feedback inline-flex items-center gap-2.5 px-10 py-4 rounded-full
             text-sm font-bold uppercase tracking-wide
@@ -613,7 +656,7 @@ export default function ResumeCreator() {
           onRecalibrate={(gapAnswer) => {
             const updatedNotes = notes ? `${notes}\nCandidate Note: ${gapAnswer}` : `Candidate Note: ${gapAnswer}`;
             setNotes(updatedNotes);
-            handleGenerate(updatedNotes);
+            handleGenerate();
           }}
         />
       )}

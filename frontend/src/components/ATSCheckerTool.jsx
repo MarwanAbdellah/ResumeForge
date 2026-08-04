@@ -109,6 +109,60 @@ function PriorityBadge({ priority }) {
   );
 }
 
+const SOURCE_STATUS_META = {
+  ok: { label: "fetched", classes: "bg-green-500/10 border-green-500/20 text-green-400" },
+  error: { label: "failed", classes: "bg-red-500/10 border-red-500/20 text-red-400" },
+  skipped: { label: "skipped", classes: "bg-white/[0.03] border-white/10 text-white/40" },
+};
+
+function SourceStatusCard({ sourceStatus = [], enrichmentData = [] }) {
+  if (!sourceStatus.length && !enrichmentData.length) return null;
+  const fetched = enrichmentData
+    .map((item) => item.title || item.name || item.url)
+    .filter(Boolean)
+    .slice(0, 8);
+  return (
+    <div className="p-5 bg-white/[0.03] border border-white/[0.08] rounded-2xl">
+      <p className="text-white/50 text-[10px] font-bold uppercase tracking-wider mb-3">
+        Source Status
+      </p>
+      <div className="space-y-2">
+        {sourceStatus.map((source, index) => {
+          const meta = SOURCE_STATUS_META[source.status] || SOURCE_STATUS_META.skipped;
+          return (
+            <div key={`${source.worker}-${source.url}-${index}`} className="flex items-start gap-2">
+              <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${meta.classes}`}>
+                {meta.label}
+              </span>
+              <div className="min-w-0">
+                <p className="text-white/80 text-xs font-medium capitalize">
+                  {source.worker === "github" ? "GitHub" : source.worker === "portfolio" ? "Portfolio" : source.worker}
+                  {source.url ? <span className="text-white/30 font-normal"> · {source.url}</span> : null}
+                </p>
+                {source.detail && (
+                  <p className="text-white/45 text-[11px] leading-relaxed break-words">{source.detail}</p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {fetched.length > 0 && (
+          <div className="pt-1">
+            <p className="text-white/45 text-[11px] mb-1">Fetched:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {fetched.map((title, idx) => (
+                <span key={idx} className="px-2 py-0.5 bg-accent/[0.08] border border-accent/20 rounded-full text-accent text-[10px]">
+                  {title}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function ATSCheckerTool() {
@@ -121,6 +175,8 @@ export default function ATSCheckerTool() {
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [portfolioLinks, setPortfolioLinks] = useState([]);
+  const [enrichmentData, setEnrichmentData] = useState([]);
 
   const handleFileDrop = useCallback((file) => {
     setUploadedFile(file);
@@ -143,6 +199,8 @@ export default function ATSCheckerTool() {
     try {
       const data = await extractFile(file);
       setExtractedText(data.extracted_text);
+      const links = data.extracted_links || [];
+      if (links.length > 0) setPortfolioLinks((prev) => Array.from(new Set([...prev, ...links])));
     } catch (err) {
       setExtractedText(`[Extraction error: ${err.message}]`);
     } finally {
@@ -156,6 +214,8 @@ export default function ATSCheckerTool() {
     setExtractedText("");
     setResult(null);
     setError(null);
+    setPortfolioLinks([]);
+    setEnrichmentData([]);
   };
 
   // State for Agentic Feedback Loop
@@ -170,13 +230,16 @@ export default function ATSCheckerTool() {
     setResult(null);
 
     try {
-      // Step 1: Structure the extracted text into enriched JSON
-      const { cleaned_data } = await cleanExtractedText(extractedText);
+      // Step 1: Structure the extracted text into enriched JSON. Portfolio
+      // links enrich the profile immediately and surface per-source status.
+      const { cleaned_data, enrichment_data, source_status } = await cleanExtractedText(extractedText, portfolioLinks);
       setLastEnrichedData(cleaned_data);
+      setEnrichmentData(enrichment_data || []);
 
-      // Step 2: Run the dedicated agentic ATS audit
-      const report = await checkAtsMatch(cleaned_data, jobDescription);
-      setResult(report);
+      // Step 2: Run the dedicated agentic ATS audit, feeding verified external
+      // evidence (GitHub repos etc.) into the audit so it can influence the score.
+      const report = await checkAtsMatch(cleaned_data, jobDescription, portfolioLinks);
+      setResult({ ...report, source_status: report.source_status || source_status || [] });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -219,6 +282,8 @@ export default function ATSCheckerTool() {
             onFileDrop={handleFileDrop}
             onFileSelect={handleFileSelect}
             onClear={clearFile}
+            portfolioLinks={portfolioLinks}
+            onPortfolioLinksChange={setPortfolioLinks}
           />
         </div>
       </div>
@@ -282,6 +347,9 @@ export default function ATSCheckerTool() {
       {/* Results */}
       {result && (
         <div className="space-y-6">
+
+          {/* Source Status */}
+          <SourceStatusCard sourceStatus={result.source_status} enrichmentData={enrichmentData} />
 
       {/* Role Mismatch Warning */}
           {result.role_mismatch && (

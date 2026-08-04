@@ -5,6 +5,7 @@ Uses FastAPI TestClient with mocked crew functions to avoid LLM calls during CI.
 import pytest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
+from models.pipeline import CandidateEvidenceModel, EvidenceChunk
 from models.schemas import ATSReport, Candidate, JobAnalysis
 
 from main import app
@@ -102,6 +103,43 @@ class TestATSCheckEndpoint:
             json={"job_description": "We need a Python engineer.", "enriched_data": {}},
         )
         assert res.status_code == 400
+
+    @patch(
+        "main.PipelineService.enrich",
+        return_value=CandidateEvidenceModel(
+            chunks=[
+                EvidenceChunk(
+                    source="github",
+                    platform="github",
+                    title="ArabMedRAG",
+                    summary="Medical RAG built with Python and Pandas",
+                    technologies=["Python", "Pandas"],
+                    verified=True,
+                    raw={"title": "ArabMedRAG", "url": "https://github.com/jane/ArabMedRAG", "platform": "github"},
+                )
+            ],
+            sources=[{"worker": "github", "url": "https://github.com/jane", "status": "ok"}],
+        ),
+    )
+    @patch(
+        "main.PipelineService.audit",
+        return_value=ATSReport(score=82, verdict="Strong Match", matched_keywords=["Python"]),
+    )
+    def test_ats_check_fetches_evidence_and_surfaces_source_status(self, mock_audit, mock_enrich):
+        res = client.post(
+            "/api/ats-check",
+            json={
+                "job_description": "We need a Python developer.",
+                "enriched_data": {"name": "Jane", "summary": "Python dev"},
+                "portfolio_links": ["https://github.com/jane"],
+            },
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["source_status"][0]["worker"] == "github"
+        assert data["enrichment_data"][0]["title"] == "ArabMedRAG"
+        # Evidence is passed into the audit so it can influence the score.
+        assert mock_audit.call_args.args[3] is not None
 
 
 class TestGapInquireEndpoint:

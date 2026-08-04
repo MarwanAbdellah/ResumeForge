@@ -1,43 +1,207 @@
-\documentclass[10pt,a4paper]{article}
-\usepackage[margin=0.5in]{geometry}
-\usepackage[T1]{fontenc}
-\usepackage{hyperref}
+%-------------------------
+% Resume in LaTeX (ResumeForge)
+% Visual style adapted from the Harshibar resume template.
+% Deterministic Jinja2 rendering from validated domain models.
+%-------------------------
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
 \usepackage{enumitem}
-\pagestyle{empty}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+
+% fontawesome
+\usepackage{fontawesome5}
+
+% fixed width
+\usepackage[scale=0.90,lf]{FiraMono}
+
+% light-grey
+\definecolor{light-grey}{gray}{0.83}
+\definecolor{dark-grey}{gray}{0.3}
+\definecolor{text-grey}{gray}{.08}
+
+% custom underline
+\usepackage{contour}
+\usepackage[normalem]{ulem}
+\renewcommand{\ULdepth}{1.8pt}
+\contourlength{0.8pt}
+\newcommand{\myuline}[1]{\bgroup\uline{\phantom{#1}}\llap{\contour{white}{#1}}\egroup}
+
+% custom font: helvetica-style sans serif
+\usepackage{tgheros}
+\renewcommand*\familydefault{\sfdefault}
+\usepackage[T1]{fontenc}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Adjust margins
+\addtolength{\oddsidemargin}{-0.5in}
+\addtolength{\evensidemargin}{0in}
+\addtolength{\textwidth}{1in}
+\addtolength{\topmargin}{-.5in}
+\addtolength{\textheight}{1.0in}
+
+\urlstyle{same}
+
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+% Sans-serif sections
+\titleformat{\section}{
+    \bfseries \vspace{2pt} \raggedright \large
+}{}{0em}{}[\color{light-grey} {\titlerule[2pt]} \vspace{-4pt}]
+
+%-------------------------
+% Custom commands
+\newcommand{\resumeItem}[1]{\item\small{#1 \vspace{-1pt}}}
+
+\newcommand{\resumeSubheading}[4]{
+  \vspace{-1pt}\item
+    \begin{tabular*}{\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & {\color{dark-grey}\small #2}\vspace{1pt}\\ % top row
+      \textit{#3} & {\color{dark-grey} \small #4}\\ % second row
+    \end{tabular*}\vspace{-4pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{\textwidth}{l@{\extracolsep{\fill}}r}
+      #1 & {\color{dark-grey}\small #2} \\
+    \end{tabular*}\vspace{-4pt}
+}
+
+\newcommand{\resumeSubItem}[1]{\resumeItem{#1}\vspace{-4pt}}
+
+\renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0in, label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+\newcommand{\resumeItemListStart}{\begin{itemize}}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{0pt}}
+
+\color{text-grey}
+
+%-------------------------------------------
 \begin{document}
+
+%----------HEADING----------
 \begin{center}
-{\LARGE \textbf{ {{ candidate.name|latex }} }}\\
-{{ candidate.email|latex }}{% if candidate.phone %} | {{ candidate.phone|latex }}{% endif %}{% if candidate.location %} | {{ candidate.location|latex }}{% endif %}
+    \textbf{\Huge {{ candidate.name|latex }}} \\ \vspace{5pt}
+    \small
+{%- if candidate.get('headline') %}
+    {{ candidate.get('headline')|latex }} \hspace{1pt} $|$ \hspace{1pt}
+{%- endif %}
+{%- if candidate.phone %}
+    \faPhone* \texttt{ {{ candidate.phone|latex }} } \hspace{1pt} $|$ \hspace{1pt}
+{%- endif %}
+{%- if candidate.email %}
+    \faEnvelope \hspace{2pt} \texttt{ {{ candidate.email|latex }} }
+{%- endif %}
+{%- if candidate.location %}
+    \hspace{1pt} $|$ \hspace{1pt} \faMapMarker* \hspace{2pt}\texttt{ {{ candidate.location|latex }} }
+{%- endif %}
+{%- for label, url in candidate.get('links', {}).items() %}
+    \hspace{1pt} $|$ \hspace{1pt} \href{ {{ url|latex_url }} }{\myuline{ {{ label|latex }} }}
+{%- endfor %}
+    \\ \vspace{-3pt}
 \end{center}
-\hrule
-{% if candidate.summary %}\section*{Summary}
+
+{% if candidate.summary %}
+%-----------SUMMARY-----------
+\section{SUMMARY}
 {{ candidate.summary|latex }}
+
 {% endif %}
-{% if candidate.experience %}\section*{Experience}
-{% for item in candidate.experience %}\textbf{ {{ item.title|latex }} }{% if item.company %} | {{ item.company|latex }}{% endif %}\\
-{{ item.location|latex }}{% if item.dates %} \hfill {{ item.dates|latex }}{% endif %}
-\begin{itemize}[leftmargin=1.5em]
-{% for bullet in item.bullets %}\item {{ bullet|latex }}
-{% endfor %}\end{itemize}
-{% endfor %}{% endif %}
-{% if candidate.projects %}\section*{Projects}
-{% for item in candidate.projects %}\textbf{ {{ item.name|latex }} }{% if item.url %} \href{ {{ item.url|latex_url }} }{\texttt{ {{ item.url|latex }} }}{% endif %}
-{% if item.description %}{{ item.description|latex }}{% endif %}
-\begin{itemize}[leftmargin=1.5em]
-{% for bullet in item.bullets %}\item {{ bullet|latex }}
-{% endfor %}\end{itemize}
-{% endfor %}{% endif %}
-{% if candidate.certifications %}\section*{Certifications}
-{% for item in candidate.certifications %}\textbf{ {{ item.name|latex }} }{% if item.issuer %} | {{ item.issuer|latex }}{% endif %}{% if item.date %} | {{ item.date|latex }}{% endif %}\\
-{% endfor %}{% endif %}
-{% if candidate.languages %}\section*{Languages}
-{% for item in candidate.languages %}{{ item.name|latex }}{% if item.proficiency %} ({{ item.proficiency|latex }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+{% if candidate.experience %}
+%-----------EXPERIENCE-----------
+\section{EXPERIENCE}
+  \resumeSubHeadingListStart
+{% for item in candidate.experience %}
+    \resumeSubheading
+      { {{ (item.company or item.title)|latex }} } { {{ item.dates|latex }} }
+      { {{ item.title|latex }}{% if item.company and item.title != item.company %} at {{ item.company|latex }}{% endif %} } { {{ item.location|latex }} }
+{% if item.bullets %}      \resumeItemListStart
+{% for bullet in item.bullets %}        \resumeItem{ {{ bullet|latex }} }
+{% endfor %}      \resumeItemListEnd
 {% endif %}
-{% if candidate.education %}\section*{Education}
-{% for item in candidate.education %}\textbf{ {{ (item.degree ~ ' ' ~ item.field)|trim|latex }} } | {{ (item.school or item.institution)|latex }}{% if item.dates %} \hfill {{ item.dates|latex }}{% endif %}\\
-{{ item.details|latex }}
-{% endfor %}{% endif %}
-{% if candidate.skills %}\section*{Skills}
-{% for item in candidate.skills %}{{ item.name|latex }}{% if item.category %} ({{ item.category|latex }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+{% endfor %}  \resumeSubHeadingListEnd
+
 {% endif %}
+{% if candidate.projects %}
+%-----------PROJECTS-----------
+\section{PROJECTS}
+    \resumeSubHeadingListStart
+{% for item in candidate.projects %}
+      \resumeProjectHeading
+          {\textbf{ {{ item.name|latex }} }{% if item.url %} \href{ {{ item.url|latex_url }} }{\myuline{ {{ (item.platform or 'Repo')|latex }} }}{% endif %}{% if item.demo_url %} \href{ {{ item.demo_url|latex_url }} }{\myuline{Dashboard}}{% endif %}} {}
+{% if item.description %}          \textit{\small {{ item.description|latex }}}\vspace{2pt}
+{% endif %}
+{% if item.bullets %}          \resumeItemListStart
+{% for bullet in item.bullets %}            \resumeItem{ {{ bullet|latex }} }
+{% endfor %}          \resumeItemListEnd
+{% endif %}
+{% endfor %}    \resumeSubHeadingListEnd
+
+{% endif %}
+{% if candidate.education %}
+%-----------EDUCATION-----------
+\section{EDUCATION}
+  \resumeSubHeadingListStart
+{% for item in candidate.education %}
+    \resumeSubheading
+      { {{ (item.school or item.institution)|latex }} } { {{ item.dates|latex }} }
+      { {{ (item.degree ~ ' ' ~ item.field)|trim|latex }} } { {{ item.details|latex }} }
+{% endfor %}  \resumeSubHeadingListEnd
+
+{% endif %}
+{% if candidate.get('skill_groups') %}
+%-----------SKILLS-----------
+\section{SKILLS}
+ \begin{itemize}[leftmargin=0in, label={}]
+    \small{\item{
+{% for group in candidate.get('skill_groups') %}
+     \textbf{ {{ group.name|latex }} }: {% for skill in group.skills %}{{ skill|latex }}{% if not loop.last %}, {% endif %}{% endfor %}\vspace{2pt} \\
+{% endfor %}
+    }}
+ \end{itemize}
+
+{% endif %}
+{% if candidate.certifications %}
+%-----------CERTIFICATIONS-----------
+\section{CERTIFICATIONS}
+ \begin{itemize}[leftmargin=0in, label={}]
+    \small{\item{
+{% for item in candidate.certifications %}
+     \textbf{ {{ item.name|latex }} }{% if item.issuer %} : {{ item.issuer|latex }}{% endif %}{% if item.date %} ({{ item.date|latex }}){% endif %}{% if not loop.last %} \\ \vspace{2pt}{% endif %}
+{% endfor %}
+    }}
+ \end{itemize}
+
+{% endif %}
+{% if candidate.languages %}
+%-----------LANGUAGES-----------
+\section{LANGUAGES}
+ \begin{itemize}[leftmargin=0in, label={}]
+    \small{\item{
+{% for item in candidate.languages %}
+     {{ item.name|latex }}{% if item.proficiency %} ({{ item.proficiency|latex }}){% endif %}{% if not loop.last %} \\ \vspace{2pt}{% endif %}
+{% endfor %}
+    }}
+ \end{itemize}
+
+{% endif %}
+%-------------------------------------------
 \end{document}

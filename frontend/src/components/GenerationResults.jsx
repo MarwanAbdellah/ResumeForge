@@ -53,6 +53,20 @@ export default function GenerationResults({ cvPdfPath, clPdfPath, outputLabel, a
               <p className="text-white/70 text-xs leading-relaxed">
                 Missing qualifications detected by ATS audit. Have you used any of these in unlisted projects or coursework?
               </p>
+
+              {atsReport.inquiry_questions?.length > 0 && (
+                <ul className="space-y-2">
+                  {atsReport.inquiry_questions.slice(0, 4).map((q, idx) => (
+                    <li key={idx} className="text-white/80 text-xs flex gap-2 leading-relaxed">
+                      <span className="px-2 py-0.5 bg-accent/10 border border-accent/20 text-accent font-mono text-[10px] rounded-md font-bold shrink-0 self-start">
+                        {q.keyword}
+                      </span>
+                      <span>{q.question}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
               <div className="flex gap-2">
                 <input
                   type="text"

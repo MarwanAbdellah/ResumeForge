@@ -1,6 +1,13 @@
 import io
 import pytest
-from tools.extractors import extract_text, extract_pdf, extract_docx
+from tools.extractors import (
+    build_extraction_diagnostics,
+    extract_text,
+    extract_pdf,
+    extract_docx,
+    per_source_status,
+    repair_extracted_text,
+)
 
 
 class TestExtractText:
@@ -71,3 +78,63 @@ class TestExtractText:
         result = extract_docx(buf.read())
         assert "Only content" in result
         assert result.strip() == "Only content"
+
+
+class TestExtractionDiagnostics:
+    def test_per_source_status_word_only(self):
+        # A CV that only contains the words, not real URLs.
+        text = "Profile: LinkedIn | GitHub | Kaggle"
+        statuses = per_source_status(text, [])
+        assert statuses["github"]["status"] == "word_only"
+        assert statuses["linkedin"]["status"] == "word_only"
+        assert statuses["kaggle"]["status"] == "word_only"
+
+    def test_per_source_status_url_found(self):
+        text = "My projects"
+        urls = ["https://github.com/jane", "https://www.linkedin.com/in/jane"]
+        statuses = per_source_status(text, urls)
+        assert statuses["github"]["status"] == "url_found"
+        assert statuses["linkedin"]["status"] == "url_found"
+
+    def test_per_source_status_not_found(self):
+        statuses = per_source_status("Just text", [])
+        assert statuses["github"]["status"] == "not_found"
+
+    def test_build_extraction_diagnostics_counts(self):
+        diag = build_extraction_diagnostics(
+            "Hello world", ["https://github.com/jane"], filename="cv.txt"
+        )
+        assert diag["character_count"] == 11
+        assert diag["page_count"] == 1
+        assert diag["hyperlink_annotations"] == 0
+        assert diag["detected_urls"] == ["https://github.com/jane"]
+        assert diag["sources"]["github"]["status"] == "url_found"
+
+
+class TestTextRepair:
+    def test_repairs_glued_tech_phrases_and_broken_spacing(self):
+        raw = (
+            "\u2022 FastAPIbackendservingaTelegrambotandwebsite;"
+            "deployedonAWSEC2withautomatedtestinganddeployment.\n"
+            "Real-timevoiceagentwithLiveKitandMCPsupportingEnglish-Arabiccode-"
+            "switchingandlow-latencyaudiostream-ing.\n"
+            "verifi\u00adcation"
+        )
+        fixed = repair_extracted_text(raw)
+        assert "FastAPI backend serving a Telegram bot and website" in fixed
+        assert "deployed on AWS EC2 with automated testing and deployment" in fixed
+        assert (
+            "Real-time voice agent with LiveKit and MCP supporting "
+            "English-Arabic code-switching and low-latency audio streaming"
+        ) in fixed
+        assert "verification" in fixed
+
+    def test_repairs_common_concatenated_terms(self):
+        fixed = repair_extracted_text("MachineLearning and NaturalLanguageProcessing and PowerBI")
+        assert "Machine Learning" in fixed
+        assert "Natural Language Processing" in fixed
+        assert "Power BI" in fixed
+
+    def test_repair_preserves_normal_text(self):
+        original = "Python developer with 5 years of experience building dashboards."
+        assert repair_extracted_text(original) == original

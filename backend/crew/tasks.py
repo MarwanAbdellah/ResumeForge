@@ -10,6 +10,7 @@ from models.schemas import (
     JobAnalysis,
     PortfolioEvidence,
 )
+from models.pipeline import ATSKeywordModel, CoverLetterReviewModel, ResumeModel
 
 
 TASKS_CONFIG = Path(__file__).parent.parent / "config" / "tasks.yaml"
@@ -24,9 +25,10 @@ OUTPUT_MODELS = {
     "extract_resume": Candidate,
     "structure_resume": Candidate,
     "analyze_job": JobAnalysis,
-    "optimize_resume": Candidate,
+    "extract_ats_keywords": ATSKeywordModel,
+    "generate_resume": ResumeModel,
     "generate_cover_letter": CoverLetter,
     "review_ats": ATSReport,
+    "review_cover_letter": CoverLetterReviewModel,
     "analyze_portfolio": PortfolioEvidence,
 }
-

@@ -71,10 +71,12 @@ class Project(StrictModel):
     name: str = ""
     description: str = ""
     url: str | None = None
+    demo_url: str | None = None
     bullets: list[str] = Field(default_factory=list)
     platform: str = ""
 
     _normalize_url = field_validator("url", mode="before")(_url_string)
+    _normalize_demo_url = field_validator("demo_url", mode="before")(_url_string)
 
 
 class Candidate(BaseModel):
@@ -149,6 +151,13 @@ class SectionFeedback(StrictModel):
     feedback: str
 
 
+class InquiryQuestion(StrictModel):
+    """A typed {keyword, question} pair for the pre-generation interview."""
+
+    keyword: str = Field(min_length=1)
+    question: str = Field(min_length=1)
+
+
 class JobAnalysis(StrictModel):
     title: str = ""
     required_skills: list[str] = Field(default_factory=list)
@@ -173,4 +182,4 @@ class ATSReport(StrictModel):
     actionable_suggestions: list[ATSAction] = Field(default_factory=list)
     ats_formatting_issues: list[str] = Field(default_factory=list)
     strengths: list[str] = Field(default_factory=list)
-    inquiry_questions: list[str] = Field(default_factory=list)
+    inquiry_questions: list[InquiryQuestion] = Field(default_factory=list)

@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from models.schemas import ATSReport, Candidate, Certification, JobAnalysis, Skill
+from models.schemas import ATSReport, Candidate, Certification, InquiryQuestion, JobAnalysis, Skill
 
 
 def test_candidate_normalizes_legacy_categorized_skills_to_typed_models():
@@ -48,3 +48,23 @@ def test_url_fields_are_json_serializable_for_crewai_storage():
     payload = candidate.model_dump()
     assert payload["links"]["github"] == "https://github.com/jane"
     assert payload["projects"][0]["url"] == "https://example.com/project"
+
+
+def test_ats_report_inquiry_questions_are_typed_objects():
+    report = ATSReport(
+        score=60,
+        inquiry_questions=[
+            {"keyword": "Power BI", "question": "Have you used Power BI?"},
+            {"keyword": "SQL", "question": "Do you know SQL?"},
+        ],
+    )
+    assert all(q.keyword and q.question for q in report.inquiry_questions)
+    assert report.inquiry_questions[0].keyword == "Power BI"
+
+    with pytest.raises(ValidationError):
+        # Plain strings are rejected once the schema is typed.
+        ATSReport(score=60, inquiry_questions=["Have you used Power BI?"])
+
+    with pytest.raises(ValidationError):
+        # Missing question is rejected.
+        ATSReport(score=60, inquiry_questions=[{"keyword": "Power BI"}])

@@ -17,14 +17,16 @@ logger = logging.getLogger(__name__)
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import Literal
+from models.api import ATSCheckRequest, AnalyzeRequest, CleanRequest, GapInquireRequest, GenerateRequest
+from models.pipeline import CandidateEvidenceModel
+from models.schemas import ATSReport, Candidate
 from security import create_document_token, validate_document_token
 from services.document_service import DocumentService
 from services.generation_service import GenerationService
-from services.pipeline_service import PipelineService, flatten_candidate
+from services.ats_postprocess import postprocess_ats_report
+from services.pipeline_service import PipelineService
 from observability.context import bind_context, new_context, reset_context, current_context
-from observability.events import emit_event
+from observability.events import emit_event, get_events
 from observability.metrics import metrics
 
 app = FastAPI(title="ResumeForge API", version="1.0.0")
@@ -51,33 +53,15 @@ _request_history: dict[str, deque[float]] = defaultdict(deque)
 SAFE_FILENAME = re.compile(r"^[\w\-]+\.pdf$")
 
 
-class CleanRequest(BaseModel):
-    extracted_text: str = Field(min_length=1, max_length=100_000)
-    portfolio_links: list[str] = Field(default_factory=list, max_length=10)
-
-
-class GenerateRequest(BaseModel):
-    cleaned_data: dict = Field(min_length=1)
-    job_description: str = Field(min_length=1, max_length=50_000)
-    output_type: Literal["cv", "cover_letter", "both"] = "both"
-    notes: str = Field(default="", max_length=10_000)
-    portfolio_links: list[str] = Field(default_factory=list, max_length=10)
-
-
-class AnalyzeRequest(BaseModel):
-    job_description: str = Field(min_length=10, max_length=50_000)
-
-
-class ATSCheckRequest(BaseModel):
-    job_description: str = Field(max_length=50_000)
-    enriched_data: dict
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()],
+    allow_origins=[origin.strip() for origin in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174",
+    ).split(",") if origin.strip()],
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Accept"],
+    allow_headers=["Content-Type", "Accept", "X-Session-ID", "X-Request-ID"],
 )
 
 
@@ -143,7 +127,13 @@ def metrics_endpoint():
     return PlainTextResponse(metrics.prometheus(), media_type="text/plain; version=0.0.4")
 
 
-from tools.extractors import extract_urls
+@app.get("/api/events/{generation_id}")
+def pipeline_events(generation_id: str):
+    """Read-only in-memory execution timeline for one generation."""
+    return {"events": get_events(generation_id)}
+
+
+from tools.extractors import extract_urls, build_extraction_diagnostics, repair_extracted_text
 
 # ── Step 1: Extract text from uploaded file ───────────────
 @app.post("/api/extract")
@@ -166,12 +156,16 @@ async def extract(file: UploadFile = File(...)):
             raise HTTPException(status_code=415, detail="Invalid PDF file")
         if filename.endswith(".docx") and not content.startswith(b"PK"):
             raise HTTPException(status_code=415, detail="Invalid DOCX file")
-        text = await asyncio.to_thread(get_pipeline_service().extract, content, file.filename)
+        raw_text = await asyncio.to_thread(get_pipeline_service().extract, content, file.filename)
+        text = repair_extracted_text(raw_text)
         urls = extract_urls(text, content, file.filename)
+        diagnostics = build_extraction_diagnostics(text, urls, content, file.filename)
         return JSONResponse(content={
             "extracted_text": text,
+            "raw_extracted_text": raw_text,
             "filename": file.filename,
             "extracted_links": urls,
+            "extraction_diagnostics": diagnostics,
         })
     except HTTPException:
         raise
@@ -183,17 +177,27 @@ async def extract(file: UploadFile = File(...)):
 # ── Step 2: Clean + Enrich extracted text ────────────────
 @app.post("/api/clean")
 async def clean(payload: CleanRequest):
-    """Structures raw CV text into JSON.
+    """Structures raw CV text into JSON and, when portfolio links are provided,
+    enriches the profile with live verified evidence immediately.
 
-    Portfolio enrichment is intentionally deferred until generation, after
-    the job description has been analyzed and can drive repository ranking.
+    The returned ``enrichment_data`` and ``source_status`` give the UI real-time
+    per-source feedback instead of silently dropping un-fetchable links.
     """
     try:
         if not payload.extracted_text.strip():
             raise HTTPException(status_code=400, detail="No extracted_text provided")
 
         cleaned = await asyncio.to_thread(get_pipeline_service().structure, payload.extracted_text)
-        return JSONResponse(content={"cleaned_data": cleaned.model_dump(mode="json"), "enrichment_data": []})
+        enrichment = CandidateEvidenceModel()
+        if payload.portfolio_links:
+            enrichment = await asyncio.to_thread(
+                get_pipeline_service().enrich, payload.portfolio_links
+            )
+        return JSONResponse(content={
+            "cleaned_data": cleaned.model_dump(mode="json"),
+            "enrichment_data": [chunk.raw for chunk in enrichment.chunks],
+            "source_status": [source.model_dump(mode="json") for source in enrichment.sources],
+        })
     except HTTPException:
         raise
     except Exception as e:
@@ -226,7 +230,9 @@ async def ats_check(payload: ATSCheckRequest):
     Feature 2: Agentic ATS Resume Auditor.
     Runs the dedicated ats_auditor_agent crew to produce a comprehensive
     ATS compatibility report with score, keyword analysis, section feedback,
-    and actionable rewrite recommendations.
+    and actionable rewrite recommendations. When portfolio links are provided,
+    verified external evidence is fetched and fed into the audit so GitHub
+    projects can influence the score.
     """
     try:
         if not payload.job_description.strip():
@@ -234,20 +240,30 @@ async def ats_check(payload: ATSCheckRequest):
         if not payload.enriched_data:
             raise HTTPException(status_code=400, detail="No enriched_data provided")
 
-        report = await asyncio.to_thread(get_pipeline_service().audit, payload.enriched_data, payload.job_description)
-        return JSONResponse(content=report.model_dump(mode="json"))
+        evidence = CandidateEvidenceModel()
+        if payload.portfolio_links:
+            evidence = await asyncio.to_thread(
+                get_pipeline_service().enrich, payload.portfolio_links
+            )
+
+        report = await asyncio.to_thread(
+            get_pipeline_service().audit,
+            payload.enriched_data,
+            payload.job_description,
+            None,
+            evidence,
+        )
+        return JSONResponse(content={
+            **report.model_dump(mode="json"),
+            "enrichment_data": [chunk.raw for chunk in evidence.chunks],
+            "source_status": [source.model_dump(mode="json") for source in evidence.sources],
+        })
     except HTTPException:
         raise
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"ATS audit failed: {str(e)}")
-
-
-class GapInquireRequest(BaseModel):
-    job_description: str
-    enriched_data: dict
-    unlisted_experience: str = ""  # User's answer describing missing domain skills
 
 
 @app.post("/api/ats-gap-inquire")
@@ -269,34 +285,22 @@ async def ats_gap_inquire(payload: GapInquireRequest):
             notes = f"CANDIDATE DISCOVERED EXPERIENCE (merge into relevant skills/summary):\n{payload.unlisted_experience.strip()}"
             data = (await asyncio.to_thread(get_pipeline_service().structure, json.dumps(data), notes)).model_dump(mode="json")
 
-        report = (await asyncio.to_thread(get_pipeline_service().audit, data, payload.job_description)).model_dump(mode="json")
+        # Analyze the JD once and reuse the validated result for the audit and
+        # deterministic inquiry-question synthesis.
+        jd_analysis = await asyncio.to_thread(get_pipeline_service().analyze, payload.job_description)
+        report = (await asyncio.to_thread(
+            get_pipeline_service().audit,
+            data,
+            payload.job_description,
+            jd_analysis,
+        )).model_dump(mode="json")
 
-        # Fallback question synthesizer for unlisted skills against target JD
-        try:
-            jd_analysis = await asyncio.to_thread(get_pipeline_service().analyze, payload.job_description)
-            req_skills = jd_analysis.required_skills + jd_analysis.technical_stack
-
-            cand_skills_flat = set()
-            for part in flatten_candidate(data).splitlines():
-                for token in re.split(r"[\s,;/\n]+", part.lower()):
-                    if token.strip():
-                        cand_skills_flat.add(token.strip())
-
-            inquiry_questions = report.get("inquiry_questions") or []
-            existing_kw = {q.get("keyword", "").lower() for q in inquiry_questions if isinstance(q, dict) and q.get("keyword")}
-
-            for sk in req_skills:
-                sk_clean = str(sk).strip()
-                if sk_clean.lower() not in cand_skills_flat and sk_clean.lower() not in existing_kw and len(sk_clean) > 1:
-                    inquiry_questions.append({
-                        "keyword": sk_clean,
-                        "question": f"The job description requires experience with {sk_clean}. Based on your extracted profile, {sk_clean} is unlisted. Have you ever worked with {sk_clean} or used {sk_clean} in any projects, labs, or coursework?"
-                    })
-                    existing_kw.add(sk_clean.lower())
-
-            report["inquiry_questions"] = inquiry_questions
-        except Exception as e:
-            logger.warning(f"JD gap analysis fallback error: {e}")
+        # Deterministic post-processing: typed, canonical, deduplicated questions
+        # and grounded suggestions (never tells the user to claim unverified skills).
+        report_model = postprocess_ats_report(
+            ATSReport.model_validate(report), Candidate.model_validate(data), jd_analysis
+        )
+        report = report_model.model_dump(mode="json")
 
         report["recalibrated_data"] = data
         return JSONResponse(content=report)
@@ -317,6 +321,7 @@ async def generate(payload: GenerateRequest):
     try:
         context = current_context()
         context.generation_id = f"gen_{uuid4().hex[:12]}"
+        context.pipeline_id = context.generation_id
         emit_event("generation", "started", output_type=payload.output_type)
         if not payload.cleaned_data:
             raise HTTPException(status_code=400, detail="No cleaned_data provided")
@@ -339,7 +344,10 @@ async def generate(payload: GenerateRequest):
             "cover_letter_pdf": result.get("cover_letter_pdf"),
             "cleaned_data": result.get("cleaned_data"),
             "ats_report": result.get("ats_report"),
+            "cover_letter_review": result.get("cover_letter_review"),
             "enrichment_data": result.get("enrichment_data", []),
+            "source_status": result.get("source_status", []),
+            "warnings": result.get("warnings", []),
             "document_token": result.get("document_token") or create_document_token(generated_files),
             "request_id": context.request_id,
             "generation_id": context.generation_id,

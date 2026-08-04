@@ -1,8 +1,10 @@
 """API-facing structured pipeline operations."""
 
+import asyncio
 import json
 
-from models.schemas import Candidate
+from models.pipeline import ATSKeywordModel, CandidateEvidenceModel
+from models.schemas import Candidate, JobAnalysis
 from tools.extractors import extract_text
 
 from .ai_service import AIService
@@ -29,5 +31,21 @@ class PipelineService:
     def analyze(self, job_description: str):
         return self.generation.analyze_job(job_description)
 
-    def audit(self, candidate_data: dict, job_description: str):
-        return self.generation.ats_check(Candidate.model_validate(candidate_data), job_description)
+    def audit(
+        self,
+        candidate_data: dict,
+        job_description: str,
+        analysis: JobAnalysis | None = None,
+        evidence: CandidateEvidenceModel | None = None,
+    ):
+        return self.generation.ats_check(
+            Candidate.model_validate(candidate_data), job_description, analysis, evidence
+        )
+
+    def enrich(self, portfolio_links: list[str]) -> CandidateEvidenceModel:
+        """Fetch and aggregate verified external evidence for one set of links."""
+        if not portfolio_links:
+            return CandidateEvidenceModel()
+        return asyncio.run(
+            self.generation.discovery.gather(list(portfolio_links), ATSKeywordModel())
+        )
