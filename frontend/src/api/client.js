@@ -4,21 +4,33 @@ const localHost = typeof window !== "undefined" && window.location.hostname === 
   ? window.location.hostname
   : "127.0.0.1";
 const API_URL = import.meta.env.VITE_API_URL || `${typeof window !== "undefined" ? window.location.protocol : "http:"}//${localHost}:8000`;
-// CrewAI calls can exceed two minutes on slower/free-tier providers. Keep the
-// client timeout configurable while allowing the backend enough time to finish.
-const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 300000);
+// CrewAI calls can exceed several minutes on slower/free-tier providers. Keep
+// the client timeout configurable while allowing the backend enough time to
+// finish. Generation is the longest step and gets its own (larger) default.
+const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 600000);
+const GENERATION_TIMEOUT_MS = Number(import.meta.env.VITE_GENERATION_TIMEOUT_MS || 900000);
 
 const sessionId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
   ? crypto.randomUUID()
   : `sess-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-async function request(url, options = {}) {
+async function request(url, options = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const headers = new Headers(options.headers || {});
     if (!headers.has("X-Session-ID")) headers.set("X-Session-ID", sessionId);
     return await fetch(url, { ...options, headers, signal: options.signal || controller.signal });
+  } catch (err) {
+    // Turn the browser's cryptic AbortError into a useful message.
+    if (err && err.name === "AbortError" && !options.signal) {
+      throw new Error(
+        "The request timed out. Generation can take several minutes on free-tier models — " +
+        "check the server logs, then retry. You can raise the timeout via " +
+        "VITE_GENERATION_TIMEOUT_MS (or VITE_API_TIMEOUT_MS)."
+      );
+    }
+    throw err;
   } finally {
     clearTimeout(timeout);
   }
@@ -55,17 +67,21 @@ export async function cleanExtractedText(text, portfolioLinks = []) {
 }
 
 export async function generateDocuments(cleanedData, jobDescription, outputType, notes, portfolioLinks = []) {
-  const res = await request(`${API_URL}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      cleaned_data: cleanedData,
-      job_description: jobDescription,
-      output_type: outputType,
-      notes: notes || "",
-      portfolio_links: portfolioLinks,
-    }),
-  });
+  const res = await request(
+    `${API_URL}/api/generate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cleaned_data: cleanedData,
+        job_description: jobDescription,
+        output_type: outputType,
+        notes: notes || "",
+        portfolio_links: portfolioLinks,
+      }),
+    },
+    GENERATION_TIMEOUT_MS
+  );
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.detail || "Generation failed");
